@@ -1,0 +1,20 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+dist/
+storage/files/*
+!storage/files/.gitkeep
+
+# AI-tooling (локальная конфигурация ассистента)
+.ai-factory/
+.claude/
+.ai-factory.json
+.mcp.json
+
+# Локальный мусор после правок зависимостей
+wheels_unused/

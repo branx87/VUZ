@@ -1,0 +1,425 @@
+{% extends "base.html" %}
+{% block title %}Расписание — Admin{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-2xl font-bold">📅 Расписание</h1>
+</div>
+
+{# ── Выбор недели сессии ── #}
+<div class="bg-white rounded-xl shadow p-4 mb-5">
+  <div class="flex flex-wrap items-center gap-3">
+    <span class="font-medium text-gray-700 text-sm">Неделя сессии:</span>
+    {% for sw in session_weeks %}
+    <a href="/admin/schedule?week={{ sw.iso }}"
+       class="text-sm px-3 py-1 rounded-full {% if sw.active %}bg-indigo-600 text-white{% else %}bg-gray-100 text-gray-700 hover:bg-gray-200{% endif %}">
+      {{ sw.label }}
+    </a>
+    {% endfor %}
+    <span class="text-gray-400 text-sm">или выбрать дату:</span>
+    <input type="date" id="week-picker" value="{{ session_week_iso }}"
+           class="border rounded px-2 py-1 text-sm"
+           onchange="window.location='/admin/schedule?week='+this.value">
+  </div>
+  <p class="text-xs text-gray-400 mt-2">Показано расписание недели <strong>{{ session_week_iso }}</strong></p>
+</div>
+
+{% if error == 'slot_taken' %}
+<div class="bg-red-50 border border-red-200 text-red-700 rounded-xl px-5 py-3 mb-5 text-sm">
+  ⚠️ Эта пара уже занята — в это время уже есть предмет. Сначала удалите или измените существующую запись.
+</div>
+{% endif %}
+
+{# ── Расписание на выбранную неделю ── #}
+<div class="bg-white rounded-xl shadow p-5 mb-6">
+  <h2 class="text-lg font-semibold mb-4">Пары на неделю</h2>
+
+  {% for dow in range(6) %}
+  <div class="mb-4">
+    <h3 class="font-medium text-indigo-700 border-b pb-1 mb-2">{{ day_names[dow] }}</h3>
+    {% if by_day[dow] %}
+    <table class="w-full text-sm">
+      <thead class="text-gray-500">
+        <tr>
+          <th class="text-left py-1 w-8">#</th>
+          <th class="text-left py-1 w-28">Время</th>
+          <th class="text-left py-1">Предмет</th>
+          <th class="text-left py-1">Преп.</th>
+          <th class="text-left py-1 w-16">Ауд.</th>
+          <th class="py-1 w-32"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in by_day[dow] %}
+        {% set is_cancelled = e.id in cancelled_ids %}
+        <tr class="border-t hover:bg-gray-50{% if is_cancelled %} opacity-60{% endif %}">
+          <td class="py-1">{{ e.pair_number }}</td>
+          <td class="py-1 text-gray-600">{{ e.time_start.strftime('%H:%M') }}–{{ e.time_end.strftime('%H:%M') }}</td>
+          <td class="py-1 font-medium{% if is_cancelled %} line-through text-gray-400{% endif %}">
+            {{ e.subject }}{% if e.subgroup %} <span class="text-xs text-gray-400">[п/г {{ e.subgroup }}]</span>{% endif %}
+          </td>
+          <td class="py-1 text-gray-600{% if is_cancelled %} line-through{% endif %}">{{ e.teacher or '—' }}</td>
+          <td class="py-1 text-gray-600">{{ e.room or '—' }}</td>
+          <td class="py-1">
+            <div class="flex items-center gap-2 flex-nowrap">
+              {# Изменить #}
+              <a href="/admin/schedule/entry/{{ e.id }}/edit"
+                 class="text-indigo-500 hover:text-indigo-700 text-xs whitespace-nowrap">изм.</a>
+              {# Отменить пару #}
+              {% if is_cancelled %}
+                <span class="text-gray-400 text-xs" title="Пара отменена на этой неделе">✕</span>
+              {% else %}
+                <form method="post" action="/admin/schedule/entry/{{ e.id }}/cancel"
+                      onsubmit="return confirm('Отменить эту пару на неделе {{ session_week_iso }}?')">
+                  <input type="hidden" name="session_week" value="{{ session_week_iso }}">
+                  <button class="text-orange-500 hover:text-orange-700 text-xs leading-none"
+                          title="Отменить пару (зачеркнуть)">отм.</button>
+                </form>
+              {% endif %}
+              {# Скопировать #}
+              <button type="button"
+                      class="text-green-600 hover:text-green-800 text-xs leading-none"
+                      title="Скопировать пару на другой день"
+                      data-week="{{ session_week_iso }}"
+                      data-subject="{{ e.subject }}"
+                      data-teacher="{{ e.teacher or '' }}"
+                      data-room="{{ e.room or '' }}"
+                      data-subgroup="{{ e.subgroup or '' }}"
+                      data-pair="{{ e.pair_number }}"
+                      onclick="openCopyModal(this)">кп.</button>
+              {# Удалить #}
+              <form method="post" action="/admin/schedule/entry/{{ e.id }}/delete"
+                    onsubmit="return confirm('Удалить пару?')">
+                <button class="text-red-500 hover:text-red-700 text-xs leading-none">удал.</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-gray-400 text-sm">Пар нет</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  {# Форма добавления пары #}
+  <details class="mt-4">
+    <summary class="cursor-pointer text-indigo-600 font-medium text-sm hover:underline">+ Добавить пару</summary>
+    <form method="post" action="/admin/schedule/entry/add"
+          class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 text-sm">
+      <input type="hidden" name="session_week" value="{{ session_week_iso }}">
+      <div>
+        <label class="block text-gray-600 mb-1">День недели</label>
+        <select name="day_of_week" class="w-full border rounded px-2 py-1">
+          {% for wd in week_days %}
+          <option value="{{ wd.dow }}">{{ wd.name }} ({{ wd.date }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="block text-gray-600 mb-1">Пара №</label>
+        <select name="pair_number" id="add_pair_number"
+                onchange="fillPairTime(this,'add_time_start','add_time_end')"
+                class="w-full border rounded px-2 py-1">
+          <option value="1">1 пара (08:15–09:45)</option>
+          <option value="2">2 пара (10:00–11:30)</option>
+          <option value="3">3 пара (11:45–13:15)</option>
+          <option value="4">4 пара (13:45–15:15)</option>
+          <option value="5">5 пара (15:25–16:55)</option>
+          <option value="6">6 пара (17:05–18:35)</option>
+          <option value="7">7 пара (18:45–20:15)</option>
+          <option value="8">8 пара (20:25–21:55)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-gray-600 mb-1">Начало</label>
+        <input type="time" name="time_start" id="add_time_start" value="08:15"
+               class="w-full border rounded px-2 py-1" readonly>
+      </div>
+      <div>
+        <label class="block text-gray-600 mb-1">Конец</label>
+        <input type="time" name="time_end" id="add_time_end" value="09:45"
+               class="w-full border rounded px-2 py-1" readonly>
+      </div>
+      <div class="col-span-2">
+        <label class="block text-gray-600 mb-1">Предмет *</label>
+        <select name="subject" required class="w-full border rounded px-2 py-1">
+          {% for s in subjects %}
+          <option value="{{ s.name }}">{{ s.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="block text-gray-600 mb-1">Преподаватель</label>
+        <select name="teacher" class="w-full border rounded px-2 py-1">
+          <option value="">— не выбрано —</option>
+          {% for t in teachers %}
+          <option value="{{ t.full_name }}">{{ t.full_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="block text-gray-600 mb-1">Аудитория</label>
+        <input type="text" name="room"
+               class="w-full border rounded px-2 py-1" placeholder="101">
+      </div>
+      <div>
+        <label class="block text-gray-600 mb-1">Подгруппа</label>
+        <select name="subgroup" class="w-full border rounded px-2 py-1">
+          <option value="">Все</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+        </select>
+      </div>
+      <div class="col-span-2 sm:col-span-4 flex justify-end">
+        <button type="submit"
+                class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded text-sm font-medium">
+          Добавить
+        </button>
+      </div>
+    </form>
+  </details>
+</div>
+
+{# ── Исключения ── #}
+<div class="bg-white rounded-xl shadow p-5 mb-6">
+  <h2 class="text-lg font-semibold mb-4">Разовые изменения (исключения)</h2>
+
+  {% if exceptions %}
+  <table class="w-full text-sm mb-4">
+    <thead class="text-gray-500 border-b">
+      <tr>
+        <th class="text-left py-1 w-28">Дата</th>
+        <th class="text-left py-1 w-24">Тип</th>
+        <th class="text-left py-1">Пара / Изменение</th>
+        <th class="text-left py-1">Причина</th>
+        <th class="py-1 w-16"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ex in exceptions %}
+      <tr class="border-t hover:bg-gray-50">
+        <td class="py-1 font-medium">{{ ex.date.strftime('%d.%m.%Y') }}</td>
+        <td class="py-1">
+          {% if ex.exception_type == 'cancel' %}
+            <span class="text-red-600">❌ отмена</span>
+          {% elif ex.exception_type == 'replace' %}
+            <span class="text-yellow-600">🔄 замена</span>
+          {% else %}
+            <span class="text-green-600">➕ добавлена</span>
+          {% endif %}
+        </td>
+        <td class="py-1 text-gray-700">
+          {% if ex.subject %}{{ ex.subject }}{% endif %}
+          {% if ex.time_start %} ({{ ex.time_start.strftime('%H:%M') }}–{{ ex.time_end.strftime('%H:%M') }}){% endif %}
+          {% if ex.room %} ауд. {{ ex.room }}{% endif %}
+        </td>
+        <td class="py-1 text-gray-500 text-xs">{{ ex.reason or '' }}</td>
+        <td class="py-1">
+          <form method="post" action="/admin/schedule/exception/{{ ex.id }}/delete"
+                onsubmit="return confirm('Удалить исключение?')">
+            <button class="text-red-500 hover:text-red-700 text-xs">удалить</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-gray-400 text-sm mb-4">Предстоящих исключений нет</p>
+  {% endif %}
+
+  <details>
+    <summary class="cursor-pointer text-indigo-600 font-medium text-sm hover:underline">+ Добавить исключение</summary>
+    <form method="post" action="/admin/schedule/exception/add"
+          class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 text-sm"
+          id="exc-form">
+      <div>
+        <label class="block text-gray-600 mb-1">Дата *</label>
+        <input type="date" name="exc_date" required value="{{ today }}"
+               class="w-full border rounded px-2 py-1">
+      </div>
+      <div>
+        <label class="block text-gray-600 mb-1">Тип *</label>
+        <select name="exception_type" id="exc-type" onchange="toggleExcFields()"
+                class="w-full border rounded px-2 py-1">
+          <option value="cancel">❌ Отмена пары</option>
+          <option value="replace">🔄 Замена</option>
+          <option value="add">➕ Добавить пару</option>
+        </select>
+      </div>
+      <div class="col-span-2">
+        <label class="block text-gray-600 mb-1">Исходная пара (для отмены/замены)</label>
+        <select name="original_entry_id" class="w-full border rounded px-2 py-1">
+          <option value="">— не выбрано —</option>
+          {% for e in all_entries %}
+          <option value="{{ e.id }}">
+            {{ day_names[e.day_of_week] }}, п.{{ e.pair_number }}: {{ e.subject }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div id="exc-new-fields" class="contents">
+        <div>
+          <label class="block text-gray-600 mb-1">Новый предмет</label>
+          <select name="subject" class="w-full border rounded px-2 py-1">
+            <option value="">— не выбрано —</option>
+            {% for s in subjects %}
+            <option value="{{ s.name }}">{{ s.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-gray-600 mb-1">Преподаватель</label>
+          <select name="teacher" class="w-full border rounded px-2 py-1">
+            <option value="">— не выбрано —</option>
+            {% for t in teachers %}
+            <option value="{{ t.full_name }}">{{ t.full_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-gray-600 mb-1">Аудитория</label>
+          <input type="text" name="room" class="w-full border rounded px-2 py-1">
+        </div>
+        <div>
+          <label class="block text-gray-600 mb-1">Пара №</label>
+          <select name="pair_number" id="exc_pair_number"
+                  onchange="fillPairTime(this,'exc_time_start','exc_time_end')"
+                  class="w-full border rounded px-2 py-1">
+            <option value="">— не выбрано —</option>
+            <option value="1">1 пара (08:15–09:45)</option>
+            <option value="2">2 пара (10:00–11:30)</option>
+            <option value="3">3 пара (11:45–13:15)</option>
+            <option value="4">4 пара (13:45–15:15)</option>
+            <option value="5">5 пара (15:25–16:55)</option>
+            <option value="6">6 пара (17:05–18:35)</option>
+            <option value="7">7 пара (18:45–20:15)</option>
+            <option value="8">8 пара (20:25–21:55)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-gray-600 mb-1">Начало</label>
+          <input type="time" name="time_start" id="exc_time_start" class="w-full border rounded px-2 py-1" readonly>
+        </div>
+        <div>
+          <label class="block text-gray-600 mb-1">Конец</label>
+          <input type="time" name="time_end" id="exc_time_end" class="w-full border rounded px-2 py-1" readonly>
+        </div>
+      </div>
+
+      <div class="col-span-2 sm:col-span-4">
+        <label class="block text-gray-600 mb-1">Причина / Комментарий</label>
+        <input type="text" name="reason"
+               class="w-full border rounded px-2 py-1"
+               placeholder="Например: преподаватель на больничном">
+      </div>
+
+      <div class="col-span-2 sm:col-span-4 flex justify-end">
+        <button type="submit"
+                class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded text-sm font-medium">
+          Добавить исключение
+        </button>
+      </div>
+    </form>
+  </details>
+</div>
+
+{# ── Диалог копирования пары ── #}
+<dialog id="copy-modal" class="rounded-xl shadow-xl p-0 w-full max-w-sm">
+  <div class="p-5">
+    <h3 class="font-semibold text-base mb-4">Скопировать пару</h3>
+    <form method="post" action="/admin/schedule/entry/add" id="copy-form">
+      <input type="hidden" name="session_week" id="copy-session-week">
+      <input type="hidden" name="subject" id="copy-subject">
+      <input type="hidden" name="teacher" id="copy-teacher">
+      <input type="hidden" name="room" id="copy-room">
+      <input type="hidden" name="subgroup" id="copy-subgroup">
+      <input type="hidden" name="time_start" id="copy-time-start">
+      <input type="hidden" name="time_end" id="copy-time-end">
+
+      <div class="mb-3">
+        <label class="block text-sm text-gray-600 mb-1">День недели</label>
+        <select name="day_of_week" id="copy-day" class="w-full border rounded px-2 py-1.5 text-sm">
+          {% for wd in week_days %}
+          <option value="{{ wd.dow }}">{{ wd.name }} ({{ wd.date }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-4">
+        <label class="block text-sm text-gray-600 mb-1">Пара №</label>
+        <select name="pair_number" id="copy-pair" onchange="updateCopyTime()" class="w-full border rounded px-2 py-1.5 text-sm">
+          <option value="1">1 пара (08:15–09:45)</option>
+          <option value="2">2 пара (10:00–11:30)</option>
+          <option value="3">3 пара (11:45–13:15)</option>
+          <option value="4">4 пара (13:45–15:15)</option>
+          <option value="5">5 пара (15:25–16:55)</option>
+          <option value="6">6 пара (17:05–18:35)</option>
+          <option value="7">7 пара (18:45–20:15)</option>
+          <option value="8">8 пара (20:25–21:55)</option>
+        </select>
+      </div>
+      <div id="copy-preview" class="text-xs text-gray-500 mb-4 bg-gray-50 rounded p-2"></div>
+      <div class="flex gap-2 justify-end">
+        <button type="button" onclick="document.getElementById('copy-modal').close()"
+                class="px-4 py-1.5 text-sm border rounded text-gray-600 hover:bg-gray-50">Отмена</button>
+        <button type="submit"
+                class="px-4 py-1.5 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium">Скопировать</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<script>
+const PAIR_TIMES = {
+  1: ["08:15","09:45"], 2: ["10:00","11:30"], 3: ["11:45","13:15"],
+  4: ["13:45","15:15"], 5: ["15:25","16:55"], 6: ["17:05","18:35"],
+  7: ["18:45","20:15"], 8: ["20:25","21:55"]
+};
+function fillPairTime(selectEl, startId, endId) {
+  const times = PAIR_TIMES[selectEl.value];
+  if (times) {
+    document.getElementById(startId).value = times[0];
+    document.getElementById(endId).value = times[1];
+  }
+}
+function toggleExcFields() {
+  const type = document.getElementById('exc-type').value;
+  const fields = document.getElementById('exc-new-fields');
+  fields.style.display = type === 'cancel' ? 'none' : 'contents';
+}
+function openCopyModal(btn) {
+  const d = btn.dataset;
+  document.getElementById('copy-session-week').value = d.week;
+  document.getElementById('copy-subject').value = d.subject;
+  document.getElementById('copy-teacher').value = d.teacher;
+  document.getElementById('copy-room').value = d.room;
+  document.getElementById('copy-subgroup').value = d.subgroup;
+  document.getElementById('copy-pair').value = d.pair;
+  updateCopyTime();
+  updateCopyPreview(d.subject, d.teacher, d.room);
+  document.getElementById('copy-modal').showModal();
+}
+function updateCopyTime() {
+  const pair = document.getElementById('copy-pair').value;
+  const times = PAIR_TIMES[pair];
+  if (times) {
+    document.getElementById('copy-time-start').value = times[0];
+    document.getElementById('copy-time-end').value = times[1];
+  }
+}
+function updateCopyPreview(subject, teacher, room) {
+  const parts = [subject];
+  if (teacher) parts.push(teacher);
+  if (room) parts.push('ауд. ' + room);
+  document.getElementById('copy-preview').textContent = parts.join(' · ');
+}
+document.addEventListener('DOMContentLoaded', function() {
+  toggleExcFields();
+  fillPairTime(document.getElementById('add_pair_number'), 'add_time_start', 'add_time_end');
+});
+</script>
+{% endblock %}

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}События — Admin{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold">🔔 События</h1>
+</div>
+
+{# ── Список событий ── #}
+<div class="bg-white rounded-xl shadow p-5 mb-6">
+  <h2 class="text-lg font-semibold mb-4">Предстоящие события</h2>
+
+  {% if events %}
+  <table class="w-full text-sm">
+    <thead class="text-gray-500 border-b">
+      <tr>
+        <th class="text-left py-1 w-28">Дата</th>
+        <th class="text-left py-1 w-16">Время</th>
+        <th class="text-left py-1">Название</th>
+        <th class="text-left py-1">Описание</th>
+        <th class="text-left py-1 w-28">Напомнить за</th>
+        <th class="py-1 w-16"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in events %}
+      <tr class="border-t hover:bg-gray-50 {% if e.event_date.isoformat() < today %}opacity-50{% endif %}">
+        <td class="py-1 font-medium">{{ e.event_date.strftime('%d.%m.%Y') }}</td>
+        <td class="py-1 text-gray-600">{{ e.event_time.strftime('%H:%M') if e.event_time else '—' }}</td>
+        <td class="py-1 font-medium">{{ e.title }}</td>
+        <td class="py-1 text-gray-500 text-xs">{{ e.description or '' }}</td>
+        <td class="py-1 text-gray-400 text-xs">
+          {% for d in e.notify_days_before %}за {{ d }} д.{% if not loop.last %}, {% endif %}{% endfor %}
+        </td>
+        <td class="py-1">
+          <form method="post" action="/admin/events/{{ e.id }}/delete"
+                onsubmit="return confirm('Удалить событие «{{ e.title }}»?')">
+            <button class="text-red-500 hover:text-red-700 text-xs">удалить</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-gray-400 text-sm">Событий пока нет</p>
+  {% endif %}
+</div>
+
+{# ── Добавить событие ── #}
+<div class="bg-white rounded-xl shadow p-5">
+  <h2 class="text-lg font-semibold mb-4">Добавить событие</h2>
+  <form method="post" action="/admin/events/add"
+        class="grid grid-cols-2 gap-3 sm:grid-cols-4 text-sm">
+    <div class="col-span-2">
+      <label class="block text-gray-600 mb-1">Название *</label>
+      <input type="text" name="title" required class="w-full border rounded px-2 py-1"
+             placeholder="Экзамен по математике">
+    </div>
+    <div>
+      <label class="block text-gray-600 mb-1">Дата *</label>
+      <input type="date" name="event_date" required value="{{ today }}"
+             class="w-full border rounded px-2 py-1">
+    </div>
+    <div>
+      <label class="block text-gray-600 mb-1">Время</label>
+      <input type="time" name="event_time" class="w-full border rounded px-2 py-1">
+    </div>
+    <div class="col-span-2">
+      <label class="block text-gray-600 mb-1">Описание</label>
+      <input type="text" name="description" class="w-full border rounded px-2 py-1"
+             placeholder="Аудитория 301, преподаватель Иванов">
+    </div>
+    <div class="col-span-2">
+      <label class="block text-gray-600 mb-1">Напомнить за (дни, через запятую)</label>
+      <input type="text" name="notify_days" value="3,1" class="w-full border rounded px-2 py-1"
+             placeholder="3,1">
+    </div>
+    <div class="col-span-2 sm:col-span-4 flex justify-end">
+      <button type="submit"
+              class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded text-sm font-medium">
+        Добавить
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}

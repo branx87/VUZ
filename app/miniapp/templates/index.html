@@ -1,0 +1,877 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>ВУЗ Бот</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg2: #f4f4f4;
+    --text: #000000;
+    --text2: #6c7380;
+    --accent: #2481cc;
+    --danger: #e53935;
+    --border: #e0e0e0;
+    --tab-h: 56px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Tabs */
+  .tabs {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: var(--tab-h);
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    display: flex;
+    z-index: 100;
+  }
+  .tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    font-size: 11px;
+    color: var(--text2);
+    cursor: pointer;
+    border: none;
+    background: none;
+    padding: 4px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .tab.active { color: var(--accent); }
+  .tab-icon { font-size: 22px; line-height: 1; }
+
+  /* Content */
+  .content { flex: 1; overflow-y: auto; padding: 12px 12px calc(var(--tab-h) + 12px); }
+  .section { display: none; }
+  .section.active { display: block; }
+
+  /* Cards */
+  .card {
+    background: var(--bg2);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+  }
+  .card-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+  .card-meta { font-size: 13px; color: var(--text2); margin-bottom: 3px; }
+  .card-desc { font-size: 13px; color: var(--text2); }
+  .badge {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 6px;
+    padding: 1px 7px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: 4px;
+  }
+
+  /* Schedule day group */
+  .day-header {
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    margin: 14px 0 6px;
+  }
+  .day-header:first-child { margin-top: 0; }
+
+  /* Empty */
+  .empty { text-align: center; color: var(--text2); padding: 40px 20px; font-size: 15px; }
+
+  /* Material link */
+  .mat-link {
+    display: block;
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 13px;
+    margin-top: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Week nav */
+  .week-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    background: var(--bg2);
+    border-radius: 12px;
+    padding: 8px 12px;
+  }
+  .week-nav button.nav-arrow {
+    background: none;
+    border: none;
+    font-size: 22px;
+    cursor: pointer;
+    color: var(--accent);
+    padding: 0 8px;
+  }
+  .week-label { font-weight: 600; font-size: 14px; }
+
+  /* Loader */
+  .loader { text-align: center; padding: 32px; color: var(--text2); }
+
+  /* Category header */
+  .cat-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 14px 0 6px;
+  }
+  .cat-header-row:first-child { margin-top: 0; }
+  .cat-header { font-weight: 700; font-size: 15px; }
+
+  /* Admin controls */
+  .admin-bar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 8px;
+  }
+  .btn-add {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 20px;
+    padding: 6px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .card-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+    justify-content: flex-end;
+  }
+  .btn-icon {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    color: var(--text2);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn-icon.danger { border-color: var(--danger); color: var(--danger); }
+  .row-actions { display: flex; gap: 6px; }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.5);
+    z-index: 200;
+    display: flex;
+    align-items: flex-end;
+  }
+  .modal-overlay.hidden { display: none; }
+  .modal {
+    background: var(--bg);
+    border-radius: 16px 16px 0 0;
+    width: 100%;
+    max-height: 88dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .modal-title { font-weight: 700; font-size: 17px; padding: 20px 16px 16px; flex-shrink: 0; }
+  #modal-body { flex: 1; overflow-y: auto; padding: 0 16px; }
+  .modal-actions { display: flex; flex-direction: column; gap: 8px; padding: 16px 16px 28px; flex-shrink: 0; }
+  #modal-error { color: var(--danger); font-size: 14px; margin-bottom: 8px; display: none; }
+  .form-row { margin-bottom: 12px; }
+  .form-row label { display: block; font-size: 13px; color: var(--text2); margin-bottom: 4px; }
+  .form-row input,
+  .form-row textarea,
+  .form-row select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 15px;
+    background: var(--bg2);
+    color: var(--text);
+    outline: none;
+    font-family: inherit;
+  }
+  .form-row textarea { min-height: 80px; resize: vertical; }
+  .btn-save {
+    background: var(--accent); color: #fff;
+    padding: 13px; border: none; border-radius: 10px;
+    font-size: 16px; font-weight: 600; cursor: pointer;
+  }
+  .btn-cancel-modal {
+    background: var(--bg2); color: var(--text);
+    padding: 13px; border: none; border-radius: 10px;
+    font-size: 16px; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div class="content">
+  <div id="schedule" class="section active">
+    <div class="week-nav">
+      <button class="nav-arrow" id="prev-week">&#8249;</button>
+      <span class="week-label" id="week-label">Загрузка…</span>
+      <button class="nav-arrow" id="next-week">&#8250;</button>
+    </div>
+    <div id="schedule-admin-bar"></div>
+    <div id="schedule-list"><div class="loader">Загрузка расписания…</div></div>
+  </div>
+
+  <div id="events" class="section">
+    <div id="events-admin-bar"></div>
+    <div id="events-list"><div class="loader">Загрузка событий…</div></div>
+  </div>
+
+  <div id="materials" class="section">
+    <div id="materials-admin-bar"></div>
+    <div id="materials-list"><div class="loader">Загрузка материалов…</div></div>
+  </div>
+</div>
+
+<!-- Admin login hint (shown only when not admin) -->
+<button id="admin-login-btn" onclick="promptAdminLogin()" style="display:none;position:fixed;bottom:calc(var(--tab-h)+8px);right:12px;z-index:150;background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:13px;cursor:pointer;color:var(--text2)">🔑 Войти</button>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="schedule">
+    <span class="tab-icon">📅</span>Расписание
+  </button>
+  <button class="tab" data-tab="events">
+    <span class="tab-icon">🔔</span>События
+  </button>
+  <button class="tab" data-tab="materials">
+    <span class="tab-icon">📚</span>Материалы
+  </button>
+</nav>
+
+<!-- Modal -->
+<div id="modal-overlay" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-title" id="modal-title"></div>
+    <div id="modal-body"></div>
+    <div class="modal-actions">
+      <div id="modal-error"></div>
+      <button type="button" class="btn-save" id="modal-save">Сохранить</button>
+      <button type="button" class="btn-cancel-modal" id="modal-cancel">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Telegram WebApp theme integration ─────────────────────────────────────
+const tg = window.Telegram?.WebApp;
+if (tg) {
+  tg.ready();
+  tg.expand();
+  const tp = tg.themeParams;
+  if (tp) {
+    const r = document.documentElement.style;
+    if (tp.bg_color)           r.setProperty('--bg',     tp.bg_color);
+    if (tp.secondary_bg_color) r.setProperty('--bg2',    tp.secondary_bg_color);
+    if (tp.text_color)         r.setProperty('--text',   tp.text_color);
+    if (tp.hint_color)         r.setProperty('--text2',  tp.hint_color);
+    if (tp.link_color)         r.setProperty('--accent', tp.link_color);
+    if (tp.section_separator_color) r.setProperty('--border', tp.section_separator_color);
+  }
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+const escHtml = s => !s ? '' : String(s)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+// ── Admin ──────────────────────────────────────────────────────────────────
+let isAdmin = false;
+const tgInitData = tg?.initData || '';
+const _LS_TOKEN_KEY = 'vuz_admin_token';
+
+function _storedToken() { try { return localStorage.getItem(_LS_TOKEN_KEY) || ''; } catch { return ''; } }
+function _saveToken(t)  { try { localStorage.setItem(_LS_TOKEN_KEY, t); } catch {} }
+function _clearToken()  { try { localStorage.removeItem(_LS_TOKEN_KEY); } catch {} }
+
+async function checkAdmin() {
+  const headers = {};
+  if (tgInitData) headers['X-Telegram-Init-Data'] = tgInitData;
+  const stored = _storedToken();
+  if (stored) headers['X-Admin-Token'] = stored;
+
+  if (!tgInitData && !stored) return; // nothing to check
+
+  try {
+    const r = await fetch('/miniapp/api/is_admin', { headers });
+    const data = await r.json();
+    isAdmin = data.is_admin || false;
+    if (isAdmin && stored) {/* token valid, keep it */}
+    if (!isAdmin && stored) { _clearToken(); } // token rejected, clear
+  } catch {}
+}
+
+async function adminFetch(method, url, body = null) {
+  const headers = { 'X-Telegram-Init-Data': tgInitData };
+  const stored = _storedToken();
+  if (stored) headers['X-Admin-Token'] = stored;
+  if (body) {
+    headers['Content-Type'] = 'application/json';
+  }
+  const opts = { method, headers, ...(body ? { body: JSON.stringify(body) } : {}) };
+  const r = await fetch(url, opts);
+  if (!r.ok) {
+    let msg = `Ошибка ${r.status}`;
+    try { const e = await r.json(); msg = e.detail || msg; } catch {}
+    if (msg === 'slot_taken') msg = 'Этот слот уже занят';
+    throw new Error(msg);
+  }
+  return r.json();
+}
+
+async function promptAdminLogin() {
+  const token = prompt('Введи токен администратора:');
+  if (!token) return;
+  try {
+    const r = await fetch('/miniapp/api/admin_login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    if (r.ok) {
+      _saveToken(token);
+      isAdmin = true;
+      // re-render current section
+      const activeId = document.querySelector('.section.active')?.id;
+      if (activeId) { loaded[activeId] = false; loadSection(activeId); }
+      document.getElementById('admin-login-btn').style.display = 'none';
+    } else {
+      alert('Неверный токен');
+    }
+  } catch { alert('Ошибка соединения'); }
+}
+
+// ── Modal ──────────────────────────────────────────────────────────────────
+let _onSave = null;
+
+function openModal(title, html, onSave) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML = html;
+  _showModalError('');
+  _onSave = onSave;
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+  _onSave = null;
+}
+
+document.getElementById('modal-cancel').addEventListener('click', closeModal);
+document.getElementById('modal-overlay').addEventListener('click', e => {
+  if (e.target.id === 'modal-overlay') closeModal();
+});
+function _showModalError(msg) {
+  const el = document.getElementById('modal-error');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+
+document.getElementById('modal-save').addEventListener('click', async () => {
+  console.log('modal-save clicked, _onSave=', typeof _onSave);
+  if (!_onSave) {
+    console.warn('_onSave is null, modal was not opened properly');
+    return;
+  }
+  const btn = document.getElementById('modal-save');
+  btn.disabled = true;
+  btn.textContent = 'Сохранение…';
+  _showModalError('');
+  try {
+    await _onSave();
+    closeModal();
+  } catch(e) {
+    console.error('save error:', e);
+    _showModalError(e.message || 'Ошибка при сохранении');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Сохранить';
+  }
+});
+
+// ── Tabs ───────────────────────────────────────────────────────────────────
+const tabs = document.querySelectorAll('.tab');
+const sections = document.querySelectorAll('.section');
+let loaded = {};
+
+tabs.forEach(tab => {
+  tab.addEventListener('click', () => {
+    const id = tab.dataset.tab;
+    tabs.forEach(t => t.classList.toggle('active', t === tab));
+    sections.forEach(s => s.classList.toggle('active', s.id === id));
+    if (!loaded[id]) { loadSection(id); loaded[id] = true; }
+  });
+});
+
+function loadSection(id) {
+  if (id === 'schedule') loadSchedule();
+  else if (id === 'events') loadEvents();
+  else if (id === 'materials') loadMaterials();
+}
+
+// ── Schedule ───────────────────────────────────────────────────────────────
+const DAYS = ['Понедельник','Вторник','Среда','Четверг','Пятница','Суббота','Воскресенье'];
+const PAIR_TIMES = {
+  1: ["08:15","09:45"], 2: ["10:00","11:30"], 3: ["11:45","13:15"],
+  4: ["13:45","15:15"], 5: ["15:25","16:55"], 6: ["17:05","18:35"],
+  7: ["18:45","20:15"], 8: ["20:25","21:55"]
+};
+let _scheduleData = [];
+let _subjects = [];
+let _teachers = [];
+
+async function loadReferences() {
+  try {
+    const [sr, tr] = await Promise.all([
+      fetch('/miniapp/api/subjects').then(r => r.json()),
+      fetch('/miniapp/api/teachers').then(r => r.json()),
+    ]);
+    _subjects = Array.isArray(sr) ? sr : [];
+    _teachers = Array.isArray(tr) ? tr : [];
+    console.log('loadReferences: subjects=%d teachers=%d', _subjects.length, _teachers.length);
+  } catch(e) {
+    console.warn('loadReferences failed:', e);
+  }
+}
+
+function fillPairTime() {
+  const pairEl = document.getElementById('f-pair');
+  if (!pairEl) return;
+  const times = PAIR_TIMES[+pairEl.value];
+  if (!times) return;
+  const ts = document.getElementById('f-ts');
+  const te = document.getElementById('f-te');
+  if (ts) ts.value = times[0];
+  if (te) te.value = times[1];
+}
+
+function mondayOf(d) {
+  const dt = new Date(d);
+  dt.setHours(12, 0, 0, 0); // noon local — safe from DST and midnight UTC shifts
+  const dow = (dt.getDay() + 6) % 7;
+  dt.setDate(dt.getDate() - dow);
+  return dt;
+}
+
+function toISO(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function formatDate(d) {
+  return d.toLocaleDateString('ru-RU', { day:'numeric', month:'short' });
+}
+
+let currentWeek = mondayOf(new Date());
+loaded['schedule'] = true;
+
+document.getElementById('prev-week').addEventListener('click', () => {
+  currentWeek = mondayOf(new Date(currentWeek.getTime() - 7*86400000));
+  loadSchedule();
+});
+document.getElementById('next-week').addEventListener('click', () => {
+  currentWeek = mondayOf(new Date(currentWeek.getTime() + 7*86400000));
+  loadSchedule();
+});
+
+function renderScheduleCard(e) {
+  const adminPart = isAdmin ? `<div class="card-actions">
+    <button class="btn-icon" onclick="editScheduleEntry(${e.id})">✏️ Ред.</button>
+    <button class="btn-icon danger" onclick="deleteScheduleEntry(${e.id})">🗑️</button>
+  </div>` : '';
+  return `<div class="card">
+    <div class="card-title"><span class="badge">${e.pair_number}</span>${escHtml(e.subject||'—')}</div>
+    <div class="card-meta">${e.time_start||''} – ${e.time_end||''} · Ауд. ${escHtml(e.room||'?')}${e.subgroup ? ' · гр.'+e.subgroup : ''}</div>
+    ${e.teacher ? `<div class="card-desc">${escHtml(e.teacher)}</div>` : ''}
+    ${adminPart}
+  </div>`;
+}
+
+async function loadSchedule() {
+  const el = document.getElementById('schedule-list');
+  const lbl = document.getElementById('week-label');
+  const iso = toISO(currentWeek);
+  const end = new Date(currentWeek.getTime() + 6*86400000);
+  lbl.textContent = formatDate(currentWeek) + ' – ' + formatDate(end);
+  el.innerHTML = '<div class="loader">Загрузка…</div>';
+  try {
+    const resp = await fetch('/miniapp/api/schedule?week=' + iso);
+    _scheduleData = await resp.json();
+    if (!_scheduleData.length) {
+      el.innerHTML = '<div class="empty">Нет пар на эту неделю</div>';
+    } else {
+      const byDay = {};
+      _scheduleData.forEach(e => { (byDay[e.day_of_week] = byDay[e.day_of_week]||[]).push(e); });
+      el.innerHTML = Object.entries(byDay).sort((a,b)=>a[0]-b[0]).map(([dow, entries]) =>
+        `<div class="day-header">${DAYS[+dow]}</div>` +
+        entries.sort((a,b)=>a.pair_number-b.pair_number).map(renderScheduleCard).join('')
+      ).join('');
+    }
+  } catch {
+    el.innerHTML = '<div class="empty">Ошибка загрузки</div>';
+  }
+  renderScheduleAdminBar();
+}
+
+function renderScheduleAdminBar() {
+  document.getElementById('schedule-admin-bar').innerHTML = isAdmin
+    ? `<div class="admin-bar"><button class="btn-add" onclick="openAddScheduleModal()">+ Добавить пару</button></div>`
+    : '';
+}
+
+function scheduleForm(e = {}) {
+  const dayOpts = DAYS.slice(0,6).map((d,i) =>
+    `<option value="${i}"${e.day_of_week===i?' selected':''}>${d}</option>`
+  ).join('');
+  const defaultWeek = e.session_week || toISO(currentWeek);
+  const pairOpts = [1,2,3,4,5,6,7,8].map(n =>
+    `<option value="${n}"${e.pair_number===n?' selected':''}>${n}</option>`
+  ).join('');
+  const subjInput = _subjects.length
+    ? `<select id="f-subj" required>
+        ${_subjects.map(s => `<option value="${escHtml(s.name)}"${s.name===e.subject?' selected':''}>${escHtml(s.name)}</option>`).join('')}
+       </select>`
+    : `<input id="f-subj" value="${escHtml(e.subject||'')}" placeholder="Введите название (добавьте в Справочники)" required>`;
+  const teacherInput = _teachers.length
+    ? `<select id="f-teacher">
+        <option value="">— не указан —</option>
+        ${_teachers.map(t => `<option value="${escHtml(t.full_name)}"${t.full_name===e.teacher?' selected':''}>${escHtml(t.full_name)}</option>`).join('')}
+       </select>`
+    : `<input id="f-teacher" value="${escHtml(e.teacher||'')}">`;
+  return `
+    <div class="form-row"><label>Неделя сессии (любой день недели) *</label>
+      <input id="f-week" type="date" value="${defaultWeek}" required></div>
+    <div class="form-row"><label>День недели *</label>
+      <select id="f-dow">${dayOpts}</select></div>
+    <div class="form-row"><label>Номер пары *</label>
+      <select id="f-pair" onchange="fillPairTime()">${pairOpts}</select></div>
+    <div class="form-row"><label>Начало *</label>
+      <input id="f-ts" type="time" value="${(e.time_start||'').slice(0,5)}" required></div>
+    <div class="form-row"><label>Конец *</label>
+      <input id="f-te" type="time" value="${(e.time_end||'').slice(0,5)}" required></div>
+    <div class="form-row"><label>Предмет *</label>${subjInput}</div>
+    <div class="form-row"><label>Преподаватель</label>${teacherInput}</div>
+    <div class="form-row"><label>Аудитория</label>
+      <input id="f-room" value="${escHtml(e.room||'')}"></div>
+    <div class="form-row"><label>Подгруппа (1 / 2 / пусто = все)</label>
+      <input id="f-subgroup" type="number" min="1" max="2" value="${e.subgroup||''}"></div>
+  `;
+}
+
+function getScheduleFormData() {
+  const d = {
+    session_week: document.getElementById('f-week').value,
+    day_of_week: +document.getElementById('f-dow').value,
+    pair_number: +document.getElementById('f-pair').value,
+    time_start: document.getElementById('f-ts').value,
+    time_end: document.getElementById('f-te').value,
+    subject: document.getElementById('f-subj').value.trim(),
+    teacher: document.getElementById('f-teacher').value.trim() || null,
+    room: document.getElementById('f-room').value.trim() || null,
+    subgroup: document.getElementById('f-subgroup').value ? +document.getElementById('f-subgroup').value : null,
+  };
+  if (!d.session_week || !d.time_start || !d.time_end || !d.subject) throw new Error('Заполните обязательные поля');
+  return d;
+}
+
+function openAddScheduleModal() {
+  try {
+    openModal('Добавить пару', scheduleForm(), async () => {
+      await adminFetch('POST', '/miniapp/api/schedule', getScheduleFormData());
+      await loadSchedule();
+    });
+    fillPairTime();
+  } catch(err) {
+    console.error('openAddScheduleModal error:', err);
+    _showModalError('Ошибка формы: ' + err.message);
+  }
+}
+
+function editScheduleEntry(id) {
+  const e = _scheduleData.find(x => x.id === id);
+  if (!e) return;
+  try {
+    openModal('Редактировать пару', scheduleForm(e), async () => {
+      await adminFetch('PUT', `/miniapp/api/schedule/${id}`, getScheduleFormData());
+      await loadSchedule();
+    });
+    fillPairTime();
+  } catch(err) {
+    console.error('editScheduleEntry error:', err);
+  }
+}
+
+async function deleteScheduleEntry(id) {
+  if (!confirm('Удалить эту пару?')) return;
+  await adminFetch('DELETE', `/miniapp/api/schedule/${id}`);
+  await loadSchedule();
+}
+
+// ── Events ─────────────────────────────────────────────────────────────────
+let _eventsData = [];
+
+function renderEventCard(e) {
+  const adminPart = isAdmin ? `<div class="card-actions">
+    <button class="btn-icon" onclick="editEvent(${e.id})">✏️ Ред.</button>
+    <button class="btn-icon danger" onclick="deleteEvent(${e.id})">🗑️</button>
+  </div>` : '';
+  return `<div class="card">
+    <div class="card-title">${escHtml(e.title)}</div>
+    <div class="card-meta">📅 ${e.event_date}${e.event_time ? ' · '+e.event_time.slice(0,5) : ''}</div>
+    ${e.description ? `<div class="card-desc">${escHtml(e.description)}</div>` : ''}
+    ${adminPart}
+  </div>`;
+}
+
+async function loadEvents() {
+  const el = document.getElementById('events-list');
+  try {
+    const resp = await fetch('/miniapp/api/events');
+    _eventsData = await resp.json();
+    el.innerHTML = _eventsData.length
+      ? _eventsData.map(renderEventCard).join('')
+      : '<div class="empty">Нет ближайших событий</div>';
+  } catch {
+    el.innerHTML = '<div class="empty">Ошибка загрузки</div>';
+  }
+  renderEventsAdminBar();
+}
+
+function renderEventsAdminBar() {
+  document.getElementById('events-admin-bar').innerHTML = isAdmin
+    ? `<div class="admin-bar"><button class="btn-add" onclick="openAddEventModal()">+ Добавить событие</button></div>`
+    : '';
+}
+
+function eventForm(e = {}) {
+  return `
+    <div class="form-row"><label>Название *</label>
+      <input id="f-title" value="${escHtml(e.title||'')}" required></div>
+    <div class="form-row"><label>Дата *</label>
+      <input id="f-date" type="date" value="${e.event_date||''}" required></div>
+    <div class="form-row"><label>Время</label>
+      <input id="f-time" type="time" value="${(e.event_time||'').slice(0,5)}"></div>
+    <div class="form-row"><label>Описание</label>
+      <textarea id="f-desc">${escHtml(e.description||'')}</textarea></div>
+  `;
+}
+
+function getEventFormData() {
+  const d = {
+    title: document.getElementById('f-title').value.trim(),
+    event_date: document.getElementById('f-date').value,
+    event_time: document.getElementById('f-time').value || null,
+    description: document.getElementById('f-desc').value.trim() || null,
+    notify_days_before: [3, 1],
+  };
+  if (!d.title || !d.event_date) throw new Error('Заполните обязательные поля');
+  return d;
+}
+
+function openAddEventModal() {
+  openModal('Добавить событие', eventForm(), async () => {
+    await adminFetch('POST', '/miniapp/api/events', getEventFormData());
+    await loadEvents();
+  });
+}
+
+function editEvent(id) {
+  const e = _eventsData.find(x => x.id === id);
+  if (!e) return;
+  openModal('Редактировать событие', eventForm(e), async () => {
+    await adminFetch('PUT', `/miniapp/api/events/${id}`, getEventFormData());
+    await loadEvents();
+  });
+}
+
+async function deleteEvent(id) {
+  if (!confirm('Удалить событие?')) return;
+  await adminFetch('DELETE', `/miniapp/api/events/${id}`);
+  await loadEvents();
+}
+
+// ── Materials ──────────────────────────────────────────────────────────────
+let _materialsData = [];
+
+function renderMaterialCard(m) {
+  const adminPart = isAdmin ? `<div class="card-actions">
+    <button class="btn-icon" onclick="editMaterial(${m.id})">✏️ Ред.</button>
+    <button class="btn-icon danger" onclick="deleteMaterial(${m.id})">🗑️</button>
+  </div>` : '';
+  return `<div class="card">
+    <div class="card-title">${escHtml(m.title)}</div>
+    ${m.description ? `<div class="card-desc">${escHtml(m.description)}</div>` : ''}
+    ${m.url ? `<a class="mat-link" href="${escHtml(m.url)}" target="_blank">${escHtml(m.url)}</a>` : ''}
+    ${adminPart}
+  </div>`;
+}
+
+function renderCategoryHeader(c) {
+  if (!isAdmin) return `<div class="cat-header-row"><span class="cat-header">${escHtml(c.emoji)} ${escHtml(c.name)}</span></div>`;
+  return `<div class="cat-header-row">
+    <span class="cat-header">${escHtml(c.emoji)} ${escHtml(c.name)}</span>
+    <div class="row-actions">
+      <button class="btn-icon" onclick="editCategory(${c.id})">✏️</button>
+      <button class="btn-icon danger" onclick="deleteCategory(${c.id})">🗑️</button>
+    </div>
+  </div>`;
+}
+
+async function loadMaterials() {
+  const el = document.getElementById('materials-list');
+  try {
+    const resp = await fetch('/miniapp/api/materials');
+    _materialsData = await resp.json();
+    const nonempty = isAdmin ? _materialsData : _materialsData.filter(c => c.materials.length > 0);
+    if (!nonempty.length) {
+      el.innerHTML = '<div class="empty">Нет материалов</div>';
+    } else {
+      el.innerHTML = nonempty.map(c =>
+        renderCategoryHeader(c) +
+        c.materials.map(renderMaterialCard).join('') +
+        (isAdmin ? `<div style="margin-bottom:12px"><button class="btn-add" onclick="openAddMaterialModal(${c.id})" style="font-size:13px;padding:5px 12px">+ Материал</button></div>` : '')
+      ).join('');
+    }
+  } catch {
+    el.innerHTML = '<div class="empty">Ошибка загрузки</div>';
+  }
+  renderMaterialsAdminBar();
+}
+
+function renderMaterialsAdminBar() {
+  document.getElementById('materials-admin-bar').innerHTML = isAdmin
+    ? `<div class="admin-bar"><button class="btn-add" onclick="openAddCategoryModal()">+ Категория</button></div>`
+    : '';
+}
+
+// Category forms
+function categoryForm(c = {}) {
+  return `
+    <div class="form-row"><label>Название *</label>
+      <input id="f-name" value="${escHtml(c.name||'')}" required></div>
+    <div class="form-row"><label>Эмодзи</label>
+      <input id="f-emoji" value="${escHtml(c.emoji||'📁')}" maxlength="4"></div>
+  `;
+}
+
+function openAddCategoryModal() {
+  openModal('Добавить категорию', categoryForm(), async () => {
+    const name = document.getElementById('f-name').value.trim();
+    if (!name) throw new Error('Введите название');
+    await adminFetch('POST', '/miniapp/api/materials/category', {
+      name, emoji: document.getElementById('f-emoji').value.trim() || '📁'
+    });
+    await loadMaterials();
+  });
+}
+
+function editCategory(id) {
+  const c = _materialsData.find(x => x.id === id);
+  if (!c) return;
+  openModal('Редактировать категорию', categoryForm(c), async () => {
+    const name = document.getElementById('f-name').value.trim();
+    if (!name) throw new Error('Введите название');
+    await adminFetch('PUT', `/miniapp/api/materials/category/${id}`, {
+      name, emoji: document.getElementById('f-emoji').value.trim() || '📁'
+    });
+    await loadMaterials();
+  });
+}
+
+async function deleteCategory(id) {
+  if (!confirm('Удалить категорию и все материалы в ней?')) return;
+  await adminFetch('DELETE', `/miniapp/api/materials/category/${id}`);
+  await loadMaterials();
+}
+
+// Material forms
+function materialForm(m = {}, catId = null) {
+  const catOpts = _materialsData.map(c =>
+    `<option value="${c.id}"${(m.category_id||catId)===c.id?' selected':''}>${escHtml(c.emoji)} ${escHtml(c.name)}</option>`
+  ).join('');
+  return `
+    <div class="form-row"><label>Категория *</label>
+      <select id="f-cat">${catOpts}</select></div>
+    <div class="form-row"><label>Название *</label>
+      <input id="f-title" value="${escHtml(m.title||'')}" required></div>
+    <div class="form-row"><label>Ссылка (URL)</label>
+      <input id="f-url" type="url" value="${escHtml(m.url||'')}"></div>
+    <div class="form-row"><label>Описание</label>
+      <textarea id="f-desc">${escHtml(m.description||'')}</textarea></div>
+  `;
+}
+
+function getMaterialFormData() {
+  const d = {
+    category_id: +document.getElementById('f-cat').value,
+    title: document.getElementById('f-title').value.trim(),
+    url: document.getElementById('f-url').value.trim() || null,
+    description: document.getElementById('f-desc').value.trim() || null,
+  };
+  if (!d.title) throw new Error('Введите название');
+  return d;
+}
+
+function openAddMaterialModal(catId) {
+  openModal('Добавить материал', materialForm({}, catId), async () => {
+    await adminFetch('POST', '/miniapp/api/materials', getMaterialFormData());
+    await loadMaterials();
+  });
+}
+
+function editMaterial(id) {
+  const mat = _materialsData.flatMap(c => c.materials).find(m => m.id === id);
+  if (!mat) return;
+  const c = _materialsData.find(c => c.materials.some(m => m.id === id));
+  openModal('Редактировать материал', materialForm({...mat, category_id: c?.id}, c?.id), async () => {
+    await adminFetch('PUT', `/miniapp/api/materials/${id}`, getMaterialFormData());
+    await loadMaterials();
+  });
+}
+
+async function deleteMaterial(id) {
+  if (!confirm('Удалить материал?')) return;
+  await adminFetch('DELETE', `/miniapp/api/materials/${id}`);
+  await loadMaterials();
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+async function init() {
+  await Promise.all([checkAdmin(), loadReferences()]);
+  if (!isAdmin) {
+    document.getElementById('admin-login-btn').style.display = 'block';
+  }
+  loadSchedule();
+}
+
+init();
+</script>
+</body>
+</html>

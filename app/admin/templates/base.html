@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}VUZ Bot Admin{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<nav class="bg-indigo-700 text-white px-6 py-3 flex items-center gap-6 shadow">
+  <span class="font-bold text-lg">🎓 VUZ Bot</span>
+  <a href="/admin/schedule"   class="hover:underline text-sm">📅 Расписание</a>
+  <a href="/admin/references" class="hover:underline text-sm">📋 Справочники</a>
+  <a href="/admin/materials"  class="hover:underline text-sm">📚 Материалы</a>
+  <a href="/admin/events"     class="hover:underline text-sm">🔔 События</a>
+  <span class="ml-auto">
+    <a href="/admin/logout" class="text-indigo-200 hover:text-white text-sm">Выйти</a>
+  </span>
+</nav>
+
+<main class="max-w-5xl mx-auto p-6">
+  {% block content %}{% endblock %}
+</main>
+
+</body>
+</html>

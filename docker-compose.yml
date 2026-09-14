@@ -1,0 +1,63 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: vuzbot
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: vuzbot
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vuzbot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://vuzbot:secret@db:5432/vuzbot
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./storage:/app/storage
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  # VK-бот: Long Poll, отдельный процесс чтобы не конкурировать с uvicorn за event loop.
+  vk_bot:
+    build:
+      context: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://vuzbot:secret@db:5432/vuzbot
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    command: python run_vk_polling.py
+
+  # Cloudflare Tunnel — публичный HTTPS-URL без домена и без SSL-сертификата.
+  # После старта смотри URL в логах: docker compose logs tunnel
+  # Затем пропиши его в .env как APP_BASE_URL и перезапусти app:
+  #   docker compose restart app
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --url http://app:8000
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
