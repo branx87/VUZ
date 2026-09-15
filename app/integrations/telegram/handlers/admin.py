@@ -50,6 +50,7 @@ class AddEventFSM(StatesGroup):
 
 
 @router.message(Command("admin"))
+@router.message(F.text == "⚙️ Админка")
 async def cmd_admin(message: Message, state: FSMContext) -> None:
     await state.clear()
     await message.answer("Панель администратора:", reply_markup=_ADMIN_KB)
@@ -67,7 +68,12 @@ async def cb_cancel(call: CallbackQuery, state: FSMContext) -> None:
     """Inline-кнопка «Отмена» в FSM-состояниях, где обычная клавиатура убрана."""
     await state.clear()
     await call.message.answer("Отменено.", reply_markup=_ADMIN_KB)
-    await call.answer()
+    # call.answer() может упасть на старых callback'ах (>30 сек) — это не критично,
+    # главное что состояние уже очищено и пользователь видит основное меню.
+    try:
+        await call.answer()
+    except Exception:
+        pass
 
 
 # ── Broadcast ──────────────────────────────────────────────────────────────

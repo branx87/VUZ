@@ -37,6 +37,7 @@ _MAIN_KB = ReplyKeyboardMarkup(
                 web_app=WebAppInfo(url=f"{settings.app_base_url.rstrip('/')}/miniapp/"),
             ),
         ],
+        [KeyboardButton(text="⚙️ Админка")],
     ],
     resize_keyboard=True,
     persistent=True,
