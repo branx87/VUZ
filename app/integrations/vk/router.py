@@ -26,8 +26,26 @@ router = APIRouter()
 
 
 async def dispatch_message(message: dict) -> None:
-    """Единая точка маршрутизации сообщения по тексту. Используется
-    и FastAPI-роутом (Callback API), и run_vk_polling.py (Long Poll)."""
+    """Единая точка маршрутизации сообщения. Используется FastAPI-роутом
+    (Callback API) и run_vk_polling.py (Long Poll).
+
+    Первым делом регистрирует отправителя — иначе юзеры, которые нажали
+    кнопку без /start, остаются "невидимыми" для рассылок.
+    """
+    from_id = message.get("from_id")
+    if from_id:
+        try:
+            from app.database import AsyncSessionLocal
+            from app.repositories.users import UserRepository
+            async with AsyncSessionLocal() as session:
+                await UserRepository(session).upsert_vk(
+                    vk_user_id=str(from_id),
+                    username=None,
+                    full_name=None,
+                )
+        except Exception as exc:
+            logger.warning("VK upsert on incoming failed: %s", exc)
+
     text = (message.get("text") or "").strip().lower()
     handler = _dispatch.get(text)
     if handler:

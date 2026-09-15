@@ -1,6 +1,7 @@
 import logging
+from typing import Any, Awaitable, Callable
 
-from aiogram import Router
+from aiogram import BaseMiddleware, Router
 from aiogram.filters import Command
 from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup, WebAppInfo
 
@@ -27,20 +28,35 @@ _MAIN_KB = ReplyKeyboardMarkup(
 )
 
 
+class EnsureTelegramUserMiddleware(BaseMiddleware):
+    """Регистрирует любого TG-юзера при первом контакте — даже если он не слал /start."""
+
+    async def __call__(
+        self,
+        handler: Callable[[Message, dict[str, Any]], Awaitable[Any]],
+        event: Message,
+        data: dict[str, Any],
+    ) -> Any:
+        user = event.from_user
+        if user:
+            try:
+                async with AsyncSessionLocal() as session:
+                    await UserRepository(session).upsert_telegram(
+                        telegram_user_id=str(user.id),
+                        username=user.username,
+                        full_name=user.full_name,
+                    )
+            except Exception as exc:
+                logger.error("ensure_telegram_user failed: %s", exc)
+        return await handler(event, data)
+
+
+# Регистрируем middleware на все сообщения.
+router.message.middleware(EnsureTelegramUserMiddleware())
+
+
 @router.message(Command("start"))
 async def cmd_start(message: Message) -> None:
-    user = message.from_user
-    if user:
-        try:
-            async with AsyncSessionLocal() as session:
-                await UserRepository(session).upsert_telegram(
-                    telegram_user_id=str(user.id),
-                    username=user.username,
-                    full_name=user.full_name,
-                )
-        except Exception as exc:
-            logger.error("/start upsert failed for user %s: %s", user.id, exc)
-
     await message.answer(
         "Привет! Я бот группы 231/232 👋\n\nВыбери раздел:",
         reply_markup=_MAIN_KB,
