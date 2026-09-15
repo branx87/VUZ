@@ -266,7 +266,6 @@ async def portal_dashboard(request: Request):
         recent_logs = (
             await session.execute(
                 select(NotificationLog)
-                .where(NotificationLog.user_id == me["id"])
                 .order_by(NotificationLog.sent_at.desc())
                 .limit(100)
             )
