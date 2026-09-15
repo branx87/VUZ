@@ -6,7 +6,14 @@ from aiogram import Bot, F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    Message,
+    ReplyKeyboardMarkup,
+)
 
 from app.database import AsyncSessionLocal
 from app.integrations.telegram.filters import IsAdmin
@@ -24,6 +31,11 @@ _ADMIN_KB = ReplyKeyboardMarkup(
         [KeyboardButton(text="❌ Отмена")],
     ],
     resize_keyboard=True,
+)
+
+# Inline-кнопка отмены — показывается в состояниях FSM, где обычная клавиатура убрана.
+_CANCEL_INLINE_KB = InlineKeyboardMarkup(
+    inline_keyboard=[[InlineKeyboardButton(text="❌ Отмена", callback_data="admin:cancel")]],
 )
 
 
@@ -50,6 +62,14 @@ async def cmd_cancel(message: Message, state: FSMContext) -> None:
     await message.answer("Отменено.", reply_markup=_ADMIN_KB)
 
 
+@router.callback_query(F.data == "admin:cancel")
+async def cb_cancel(call: CallbackQuery, state: FSMContext) -> None:
+    """Inline-кнопка «Отмена» в FSM-состояниях, где обычная клавиатура убрана."""
+    await state.clear()
+    await call.message.answer("Отменено.", reply_markup=_ADMIN_KB)
+    await call.answer()
+
+
 # ── Broadcast ──────────────────────────────────────────────────────────────
 
 
@@ -65,7 +85,10 @@ async def cmd_broadcast(message: Message, bot: Bot, state: FSMContext) -> None:
 @router.message(F.text == "📢 Рассылка")
 async def btn_broadcast(message: Message, state: FSMContext) -> None:
     await state.set_state(BroadcastFSM.text)
-    await message.answer("Введите текст рассылки:", reply_markup=ReplyKeyboardRemove())
+    await message.answer(
+        "Введите текст рассылки:",
+        reply_markup=_CANCEL_INLINE_KB,
+    )
 
 
 @router.message(BroadcastFSM.text)
@@ -95,7 +118,10 @@ async def _do_broadcast(message: Message, bot: Bot, text: str) -> None:
 @router.message(F.text == "📅 Добавить событие")
 async def cmd_add_event(message: Message, state: FSMContext) -> None:
     await state.set_state(AddEventFSM.date)
-    await message.answer("Введите дату события (ГГГГ-ММ-ДД):", reply_markup=ReplyKeyboardRemove())
+    await message.answer(
+        "Введите дату события (ГГГГ-ММ-ДД):",
+        reply_markup=_CANCEL_INLINE_KB,
+    )
 
 
 @router.message(AddEventFSM.date)
@@ -103,18 +129,27 @@ async def fsm_date(message: Message, state: FSMContext) -> None:
     try:
         event_date = date.fromisoformat((message.text or "").strip())
     except ValueError:
-        await message.answer("Неверный формат. Введите дату в формате ГГГГ-ММ-ДД:")
+        await message.answer(
+            "Неверный формат. Введите дату в формате ГГГГ-ММ-ДД:",
+            reply_markup=_CANCEL_INLINE_KB,
+        )
         return
     await state.update_data(event_date=event_date.isoformat())
     await state.set_state(AddEventFSM.title)
-    await message.answer("Введите название события:")
+    await message.answer(
+        "Введите название события:",
+        reply_markup=_CANCEL_INLINE_KB,
+    )
 
 
 @router.message(AddEventFSM.title)
 async def fsm_title(message: Message, state: FSMContext) -> None:
     await state.update_data(title=(message.text or "").strip())
     await state.set_state(AddEventFSM.description)
-    await message.answer("Введите описание (или /skip чтобы пропустить):")
+    await message.answer(
+        "Введите описание (или /skip чтобы пропустить):",
+        reply_markup=_CANCEL_INLINE_KB,
+    )
 
 
 @router.message(AddEventFSM.description)
