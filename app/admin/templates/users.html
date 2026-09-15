@@ -19,6 +19,8 @@
         <th class="text-left py-2 px-3">ID</th>
         <th class="text-left py-2 px-3">ФИО</th>
         <th class="text-left py-2 px-3">Email</th>
+        <th class="text-left py-2 px-3">Telegram</th>
+        <th class="text-left py-2 px-3">VK</th>
         <th class="text-left py-2 px-3">Статус</th>
         <th class="text-left py-2 px-3">Создан</th>
         <th class="text-right py-2 px-3">Действия</th>
@@ -29,12 +31,26 @@
       <tr class="border-t">
         <td class="py-2 px-3 text-gray-500">{{ u.id }}</td>
         <td class="py-2 px-3">{{ u.full_name or '—' }}</td>
-        <td class="py-2 px-3">{{ u.email }}</td>
+        <td class="py-2 px-3">{{ u.email or '—' }}</td>
+        <td class="py-2 px-3">
+          {% if u.telegram_user_id %}
+            <span class="text-xs">✅ {{ u.telegram_username or u.telegram_user_id }}</span>
+          {% else %}
+            <span class="text-xs text-gray-400">—</span>
+          {% endif %}
+        </td>
+        <td class="py-2 px-3">
+          {% if u.vk_user_id %}
+            <span class="text-xs">✅ {{ u.vk_username or u.vk_user_id }}</span>
+          {% else %}
+            <span class="text-xs text-gray-400">—</span>
+          {% endif %}
+        </td>
         <td class="py-2 px-3">
           {% if u.is_web_active %}
             <span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded">✅ Активен</span>
           {% else %}
-            <span class="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded">⏳ Ждёт</span>
+            <span class="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded">⛔ Заблокирован</span>
           {% endif %}
         </td>
         <td class="py-2 px-3 text-gray-500 text-xs">{{ u.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
@@ -69,11 +85,10 @@
 <div class="bg-white rounded-xl shadow p-4 mt-4 text-xs text-gray-500">
   <p><b>Как это работает:</b></p>
   <ul class="list-disc pl-5 mt-1 space-y-1">
-    <li>Студент заходит на <code>/portal/register</code>, вводит имя, фамилию, email и пароль.</li>
-    <li>Запись создаётся со статусом «Ждёт». Зайти на портал он пока не может.</li>
-    <li>Ты нажимаешь «Одобрить» — теперь он может войти.</li>
-    <li>«Заблокировать» — снимает доступ без удаления (можно разблокировать обратно).</li>
-    <li>«Удалить» — полностью стирает юзера и его уведомления.</li>
+    <li>Один человек = одна строка, даже если он есть в Telegram, VK и на портале.</li>
+    <li>Колонки Telegram / VK показывают, привязан ли юзер к этим платформам.</li>
+    <li>«Заблокировать» снимает доступ к порталу без удаления. «Удалить» стирает юзера целиком.</li>
+    <li>Если TG и web-юзер — один и тот же человек, но лежат в разных строках, инструмент мёржа пока не сделан (TODO).</li>
   </ul>
 </div>
 {% endblock %}

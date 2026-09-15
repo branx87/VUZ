@@ -56,16 +56,30 @@ class Teacher(Base):
 # ---------------------------------------------------------------------------
 
 class User(Base):
+    """Один пользователь = одна строка. Платформенные ID — отдельные колонки."""
+
     __tablename__ = "users"
     __table_args__ = (
-        UniqueConstraint("platform", "platform_user_id", name="uq_user_platform"),
+        UniqueConstraint("telegram_user_id", name="uq_users_telegram"),
+        UniqueConstraint("vk_user_id", name="uq_users_vk"),
+        UniqueConstraint("email", name="uq_users_email"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    platform: Mapped[str] = mapped_column(String(20))           # "telegram" | "vk"
-    platform_user_id: Mapped[str] = mapped_column(String(50))   # str(chat_id) или str(vk_user_id)
-    username: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    # Идентификаторы на платформах (любая комбинация может быть заполнена).
+    telegram_user_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    telegram_username: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    vk_user_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    vk_username: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    # Отображаемое имя (заполняется по мере того, как человек становится известен).
     full_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+
+    # Web-портал.
+    email: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    password_hash: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    is_web_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -74,12 +88,6 @@ class User(Base):
         JSON,
         default=lambda: {"schedule_change": True, "event_reminder": True, "news": True},
     )
-
-    # Web-portal auth (см. app/portal)
-    email: Mapped[Optional[str]] = mapped_column(String(200), unique=True, nullable=True)
-    password_hash: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    is_web_active: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Проставляется когда админ одобрил регистрацию. До этого юзер не может войти.
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

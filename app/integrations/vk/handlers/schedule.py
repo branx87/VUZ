@@ -20,9 +20,8 @@ async def _register_user(msg: dict) -> None:
         return
     try:
         async with AsyncSessionLocal() as session:
-            await UserRepository(session).upsert(
-                platform="vk",
-                platform_user_id=str(from_id),
+            await UserRepository(session).upsert_vk(
+                vk_user_id=str(from_id),
                 username=None,
                 full_name=None,
             )

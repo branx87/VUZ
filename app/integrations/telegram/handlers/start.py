@@ -33,9 +33,8 @@ async def cmd_start(message: Message) -> None:
     if user:
         try:
             async with AsyncSessionLocal() as session:
-                await UserRepository(session).upsert(
-                    platform="telegram",
-                    platform_user_id=str(user.id),
+                await UserRepository(session).upsert_telegram(
+                    telegram_user_id=str(user.id),
                     username=user.username,
                     full_name=user.full_name,
                 )

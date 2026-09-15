@@ -86,7 +86,10 @@ def _format_reminder(event: Event, days_before: int) -> str:
 
 
 async def _send_event_reminders(bot: Bot | None) -> None:
-    """Основная задача: разослать напоминания тем, кому они положены сегодня."""
+    """Основная задача: разослать напоминания тем, кому они положены сегодня.
+
+    Один юзер получает максимум одно напоминание о событии за N дней — независимо от
+    того, на скольких платформах он есть. Если на нескольких — шлём во все."""
     today = _now_in_tz().date()
     async with AsyncSessionLocal() as session:
         events = (
@@ -98,19 +101,14 @@ async def _send_event_reminders(bot: Bot | None) -> None:
         if not events:
             return
 
-        # Группируем события по "за сколько дней нужно слать"
         for ev in events:
             days_left = (ev.event_date - today).days
             if days_left not in (ev.notify_days_before or []):
                 continue
 
-            # Получаем всех юзеров, которым можно слать (notifications_enabled,
-            # notification_types.event_reminder=True)
             users = (
                 await session.execute(
-                    select(User).where(
-                        User.notifications_enabled == True,
-                    )
+                    select(User).where(User.notifications_enabled == True)
                 )
             ).scalars().all()
 
@@ -124,25 +122,29 @@ async def _send_event_reminders(bot: Bot | None) -> None:
                     session, event_id=ev.id, user_id=user.id, days_before=days_left
                 ):
                     continue
-                try:
-                    if user.platform == "telegram" and bot:
-                        await bot.send_message(int(user.platform_user_id), text)
-                    elif user.platform == "vk":
-                        # VK-отправка идёт через общий broadcast с одним получателем;
-                        # но проще — отдельный путь не нужен: используем
-                        # services.broadcast.broadcast_vk, который проходит по всем.
-                        # Чтобы не дублировать, шлём вручную.
+                sent_ok = False
+                if user.telegram_user_id and bot:
+                    try:
+                        await bot.send_message(int(user.telegram_user_id), text)
+                        sent_ok = True
+                    except Exception as exc:
+                        logger.warning(
+                            "reminder (tg) failed: event=%d user=%s: %s",
+                            ev.id, user.telegram_user_id, exc,
+                        )
+                if user.vk_user_id:
+                    try:
                         from app.integrations.vk.api import vk_api
-                        await vk_api.send_message(int(user.platform_user_id), text)
-                    await _log(session, event=ev, user=user, days_before=days_left, status="sent")
-                except Exception as exc:
-                    logger.warning(
-                        "reminder send failed: event=%d user=%s: %s",
-                        ev.id, user.platform_user_id, exc,
-                    )
+                        await vk_api.send_message(int(user.vk_user_id), text)
+                        sent_ok = True
+                    except Exception as exc:
+                        logger.warning(
+                            "reminder (vk) failed: event=%d user=%s: %s",
+                            ev.id, user.vk_user_id, exc,
+                        )
+                if sent_ok:
                     await _log(
-                        session, event=ev, user=user,
-                        days_before=days_left, status="failed", error_msg=str(exc)[:500],
+                        session, event=ev, user=user, days_before=days_left, status="sent"
                     )
 
 
