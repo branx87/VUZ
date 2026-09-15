@@ -15,6 +15,7 @@ from app.repositories.events import EventRepository
 from app.repositories.materials import MaterialCategoryRepository, MaterialRepository
 from app.repositories.schedule import ScheduleRepository
 from app.repositories.subjects import SubjectRepository, TeacherRepository
+from app.repositories.users import UserRepository
 from app.services.schedule import DAY_NAMES
 
 logger = logging.getLogger(__name__)
@@ -356,6 +357,60 @@ async def delete_exception(request: Request, exc_id: int):
         if exc:
             await repo.delete_exception(exc)
     return RedirectResponse("/admin/schedule", status_code=302)
+
+
+# ---------------------------------------------------------------------------
+# Web portal users
+# ---------------------------------------------------------------------------
+
+@router.get("/users", response_class=HTMLResponse)
+async def users_page(request: Request):
+    if not _authed(request):
+        return _redirect_login("/admin/users")
+    async with AsyncSessionLocal() as session:
+        web_users = await UserRepository(session).get_all_web()
+    return templates.TemplateResponse(request, "users.html", {
+        "users": web_users,
+    })
+
+
+@router.post("/users/{user_id}/block")
+async def block_user(request: Request, user_id: int):
+    if not _authed(request):
+        return _redirect_login()
+    async with AsyncSessionLocal() as session:
+        repo = UserRepository(session)
+        user = await repo.get_by_id(user_id)
+        if user:
+            await repo.set_web_active(user, False)
+            logger.info("[admin.users] blocked id=%d email=%s", user_id, user.email)
+    return RedirectResponse("/admin/users", status_code=302)
+
+
+@router.post("/users/{user_id}/unblock")
+async def unblock_user(request: Request, user_id: int):
+    if not _authed(request):
+        return _redirect_login()
+    async with AsyncSessionLocal() as session:
+        repo = UserRepository(session)
+        user = await repo.get_by_id(user_id)
+        if user:
+            await repo.set_web_active(user, True)
+            logger.info("[admin.users] unblocked id=%d email=%s", user_id, user.email)
+    return RedirectResponse("/admin/users", status_code=302)
+
+
+@router.post("/users/{user_id}/delete")
+async def delete_user(request: Request, user_id: int):
+    if not _authed(request):
+        return _redirect_login()
+    async with AsyncSessionLocal() as session:
+        repo = UserRepository(session)
+        user = await repo.get_by_id(user_id)
+        if user:
+            await repo.delete(user)
+            logger.info("[admin.users] deleted id=%d", user_id)
+    return RedirectResponse("/admin/users", status_code=302)
 
 
 # ---------------------------------------------------------------------------

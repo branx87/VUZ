@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import settings
 from app.scheduler import start_scheduler, stop_scheduler
@@ -72,6 +73,16 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="VUZ Bot", version="0.2.0", lifespan=lifespan)
 
+# Подписанные cookie-сессии для web-портала (используются Starlette SessionMiddleware).
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.session_secret,
+    session_cookie="portal_session",
+    same_site="lax",
+    https_only=settings.cookie_secure,
+    max_age=86400 * 30,
+)
+
 # ---------------------------------------------------------------------------
 # Routers
 # ---------------------------------------------------------------------------
@@ -80,11 +91,13 @@ from app.integrations.telegram.router import router as tg_router
 from app.integrations.vk.router import router as vk_router
 from app.admin.router import router as admin_router
 from app.miniapp.router import router as miniapp_router
+from app.portal.router import router as portal_router
 
 app.include_router(tg_router, prefix="/webhook/tg", tags=["telegram"])
 app.include_router(vk_router, prefix="/webhook/vk", tags=["vk"])
 app.include_router(admin_router, prefix="/admin", tags=["admin"])
 app.include_router(miniapp_router, prefix="/miniapp", tags=["miniapp"])
+app.include_router(portal_router, prefix="/portal", tags=["portal"])
 
 
 # ---------------------------------------------------------------------------

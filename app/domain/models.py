@@ -75,6 +75,12 @@ class User(Base):
         default=lambda: {"schedule_change": True, "event_reminder": True, "news": True},
     )
 
+    # Web-portal auth (см. app/portal)
+    email: Mapped[Optional[str]] = mapped_column(String(200), unique=True, nullable=True)
+    password_hash: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    is_web_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Проставляется когда админ одобрил регистрацию. До этого юзер не может войти.
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

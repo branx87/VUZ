@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Регистрация — VUZ Bot</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center px-4">
+  <div class="bg-white rounded-xl shadow p-8 w-full max-w-md">
+    <h1 class="text-2xl font-bold mb-2 text-center">🎓 Регистрация</h1>
+    <p class="text-sm text-gray-500 text-center mb-6">Доступ к расписанию и материалам</p>
+
+    {% if request.query_params.get('ok') %}
+    <div class="bg-green-50 border border-green-200 text-green-800 rounded p-3 mb-4 text-sm">
+      ✅ Заявка отправлена. Дождитесь подтверждения администратора — после этого можно войти.
+    </div>
+    {% endif %}
+
+    {% if error %}
+    <div class="bg-red-50 border border-red-200 text-red-700 rounded p-3 mb-4 text-sm">
+      {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="post" action="/portal/register" class="space-y-3">
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-gray-700 mb-1">Имя *</label>
+          <input type="text" name="first_name" required autofocus
+                 class="w-full border rounded px-3 py-2 text-sm">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-700 mb-1">Фамилия *</label>
+          <input type="text" name="last_name" required
+                 class="w-full border rounded px-3 py-2 text-sm">
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-700 mb-1">Email *</label>
+        <input type="email" name="email" required
+               class="w-full border rounded px-3 py-2 text-sm"
+               placeholder="ivan@example.com">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-700 mb-1">Пароль *</label>
+        <input type="password" name="password" required minlength="6"
+               class="w-full border rounded px-3 py-2 text-sm">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-700 mb-1">Повторите пароль *</label>
+        <input type="password" name="password2" required minlength="6"
+               class="w-full border rounded px-3 py-2 text-sm">
+      </div>
+      <button type="submit"
+              class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 rounded transition">
+        Зарегистрироваться
+      </button>
+    </form>
+
+    <p class="text-center text-sm text-gray-500 mt-4">
+      Уже зарегистрированы?
+      <a href="/portal/login" class="text-indigo-600 hover:underline">Войти</a>
+    </p>
+  </div>
+</body>
+</html>

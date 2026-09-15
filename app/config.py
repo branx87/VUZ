@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     admin_secret_token: str = "changeme"
     # Cookie Secure flag: True для HTTPS, False для локального HTTP-дев.
     cookie_secure: bool = False
+    # Секрет для подписи cookie-сессий web-портала (отдельный от ADMIN_SECRET_TOKEN).
+    session_secret: str = "change-me-too-32-chars-min-portal"
 
     # Files
     files_dir: str = "storage/files"

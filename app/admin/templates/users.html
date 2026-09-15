@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Пользователи портала — Admin{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+  <h1 class="text-2xl font-bold">👥 Пользователи портала</h1>
+  <span class="text-sm text-gray-500">Всего: {{ users | length }}</span>
+</div>
+
+{% if not users %}
+<div class="bg-white rounded-xl shadow p-8 text-center text-gray-500">
+  Пока никто не зарегистрировался через портал.
+</div>
+{% else %}
+<div class="bg-white rounded-xl shadow overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-gray-50 text-gray-600">
+      <tr>
+        <th class="text-left py-2 px-3">ID</th>
+        <th class="text-left py-2 px-3">ФИО</th>
+        <th class="text-left py-2 px-3">Email</th>
+        <th class="text-left py-2 px-3">Статус</th>
+        <th class="text-left py-2 px-3">Создан</th>
+        <th class="text-right py-2 px-3">Действия</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr class="border-t">
+        <td class="py-2 px-3 text-gray-500">{{ u.id }}</td>
+        <td class="py-2 px-3">{{ u.full_name or '—' }}</td>
+        <td class="py-2 px-3">{{ u.email }}</td>
+        <td class="py-2 px-3">
+          {% if u.is_web_active %}
+            <span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded">✅ Активен</span>
+          {% else %}
+            <span class="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded">⏳ Ждёт</span>
+          {% endif %}
+        </td>
+        <td class="py-2 px-3 text-gray-500 text-xs">{{ u.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+        <td class="py-2 px-3 text-right">
+          {% if u.is_web_active %}
+          <form method="post" action="/admin/users/{{ u.id }}/block" class="inline">
+            <button class="bg-yellow-600 hover:bg-yellow-700 text-white text-xs px-2 py-1 rounded">
+              Заблокировать
+            </button>
+          </form>
+          {% else %}
+          <form method="post" action="/admin/users/{{ u.id }}/unblock" class="inline">
+            <button class="bg-green-600 hover:bg-green-700 text-white text-xs px-2 py-1 rounded">
+              Разблокировать
+            </button>
+          </form>
+          {% endif %}
+          <form method="post" action="/admin/users/{{ u.id }}/delete" class="inline"
+                onsubmit="return confirm('Удалить пользователя {{ u.email }}?');">
+            <button class="bg-red-600 hover:bg-red-700 text-white text-xs px-2 py-1 rounded">
+              Удалить
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="bg-white rounded-xl shadow p-4 mt-4 text-xs text-gray-500">
+  <p><b>Как это работает:</b></p>
+  <ul class="list-disc pl-5 mt-1 space-y-1">
+    <li>Студент заходит на <code>/portal/register</code>, вводит имя, фамилию, email и пароль.</li>
+    <li>Запись создаётся со статусом «Ждёт». Зайти на портал он пока не может.</li>
+    <li>Ты нажимаешь «Одобрить» — теперь он может войти.</li>
+    <li>«Заблокировать» — снимает доступ без удаления (можно разблокировать обратно).</li>
+    <li>«Удалить» — полностью стирает юзера и его уведомления.</li>
+  </ul>
+</div>
+{% endblock %}
