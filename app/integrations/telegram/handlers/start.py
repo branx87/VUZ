@@ -37,6 +37,7 @@ _MAIN_KB = ReplyKeyboardMarkup(
                 web_app=WebAppInfo(url=f"{settings.app_base_url.rstrip('/')}/miniapp/"),
             ),
         ],
+        [KeyboardButton(text="⚙️ Админка")],
     ],
     resize_keyboard=True,
     persistent=True,
@@ -125,17 +126,19 @@ async def _link_or_create_by_email(telegram_user_id: str, email: str, full_name:
 
 
 @router.message(Command("start"))
+@router.message(F.text == "🏠 Главное меню")
 async def cmd_start(message: Message, state: FSMContext) -> None:
     user = message.from_user
     if not user:
         return
+
+    await state.clear()
 
     async with AsyncSessionLocal() as session:
         existing = await UserRepository(session).get_by_telegram_id(str(user.id))
 
     if existing and existing.email:
         await _show_menu(message, existing.full_name)
-        await state.clear()
         return
 
     # Нет email — спрашиваем.
