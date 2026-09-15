@@ -15,7 +15,7 @@ from aiogram.exceptions import TelegramRetryAfter
 
 from app.config import settings
 from app.database import AsyncSessionLocal
-from app.domain.models import NotificationLog
+from app.domain.models import Message
 from app.integrations.vk.api import VKApi, vk_api as default_vk_api
 from app.repositories.users import UserRepository
 
@@ -50,41 +50,31 @@ async def _send_with_retry(
     return False, last_err
 
 
-async def _log_combined_broadcast(
+async def _record_broadcast_message(
     *,
-    by_user: dict[int, dict[str, tuple[bool, str | None]]],
-    text_preview: str | None,
-) -> None:
-    """Одна запись на юзера: считаем доставленным если хотя бы на одной платформе ok.
-    text_preview для всех одинаковый — берётся один раз из аргумента."""
-    if not by_user:
-        return
-    preview = text_preview[:500] if text_preview else None
+    text: str,
+    delivered_count: int,
+    sender_id: int | None = None,
+) -> int:
+    """Одна запись в `messages` на рассылку. Возвращает id."""
     async with AsyncSessionLocal() as session:
-        for user_id, platforms in by_user.items():
-            # Если хоть одна платформа доставила — статус "sent". Иначе "failed".
-            sent_ok = any(ok for ok, _ in platforms.values())
-            # Текст ошибки — от первой упавшей платформы (если есть).
-            err: str | None = next(
-                (e for ok, e in platforms.values() if not ok and e), None
-            )
-            session.add(
-                NotificationLog(
-                    user_id=user_id,
-                    notification_type=_BROADCAST_LOG_TYPE,
-                    status="sent" if sent_ok else "failed",
-                    error_msg=err,
-                    text_preview=preview,
-                )
-            )
+        msg = Message(
+            message_type=_BROADCAST_LOG_TYPE,
+            text_preview=text[:500],
+            delivered_count=delivered_count,
+            sender_id=sender_id,
+        )
+        session.add(msg)
         await session.commit()
+        await session.refresh(msg)
+        return msg.id
 
 
 async def broadcast_telegram(
     bot: Bot, text: str, *, concurrency: int = 25
 ) -> dict[int, tuple[bool, str | None]]:
     """Шлёт текст всем Telegram-подписчикам, уважая RetryAfter.
-    Возвращает {user_id: (ok, err)} — без записи в NotificationLog; её пишет broadcast_all.
+    Возвращает {user_id: (ok, err)} — без записи в БД; её пишет broadcast_all.
     """
     async with AsyncSessionLocal() as session:
         users = await UserRepository(session).get_all_telegram()
@@ -115,7 +105,7 @@ async def broadcast_vk(
     concurrency: int = 3,
 ) -> dict[int, tuple[bool, str | None]]:
     """Шлёт текст всем VK-подписчикам.
-    Возвращает {user_id: (ok, err)} — без записи в NotificationLog; её пишет broadcast_all.
+    Возвращает {user_id: (ok, err)} — без записи в БД; её пишет broadcast_all.
     """
     api = vk_api or default_vk_api
     async with AsyncSessionLocal() as session:
@@ -142,24 +132,32 @@ async def broadcast_vk(
     return out
 
 
-async def broadcast_all(bot: Bot, text: str) -> dict[str, tuple[int, int]]:
+async def broadcast_all(
+    bot: Bot, text: str, *, sender_id: int | None = None
+) -> dict[str, tuple[int, int]]:
     """Рассылает по всем платформам параллельно. Возвращает {platform: (sent, failed)}.
 
-    Запись в NotificationLog — ровно одна на юзера (даже если у него и TG, и VK).
-    Статус — "sent" если доставлено хотя бы на одной платформе.
+    Пишет ОДНУ запись в `messages` на рассылку — независимо от числа получателей.
+    `delivered_count` — сколько юзеров получили хотя бы на одной платформе.
     """
     tg_task = broadcast_telegram(bot, text)
     vk_task = broadcast_vk(text)
     tg_results, vk_results = await asyncio.gather(tg_task, vk_task)
 
-    # Объединяем результаты по user_id.
-    by_user: dict[int, dict[str, tuple[bool, str | None]]] = {}
-    for uid, res in tg_results.items():
-        by_user.setdefault(uid, {})["telegram"] = res
-    for uid, res in vk_results.items():
-        by_user.setdefault(uid, {})["vk"] = res
+    # Считаем уникальных доставленных юзеров (по user_id).
+    delivered_user_ids: set[int] = set()
+    for uid, (ok, _) in tg_results.items():
+        if ok:
+            delivered_user_ids.add(uid)
+    for uid, (ok, _) in vk_results.items():
+        if ok:
+            delivered_user_ids.add(uid)
 
-    await _log_combined_broadcast(by_user=by_user, text_preview=text)
+    await _record_broadcast_message(
+        text=text,
+        delivered_count=len(delivered_user_ids),
+        sender_id=sender_id,
+    )
 
     tg_sent = sum(1 for ok, _ in tg_results.values() if ok)
     vk_sent = sum(1 for ok, _ in vk_results.values() if ok)

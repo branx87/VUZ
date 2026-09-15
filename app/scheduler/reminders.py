@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import AsyncSessionLocal
-from app.domain.models import Event, NotificationLog, User
+from app.domain.models import Event, Message, NotificationLog, User
 from app.services.broadcast import broadcast_telegram, broadcast_vk
 from sqlalchemy import select
 
@@ -59,6 +59,7 @@ async def _log(
     status: str,
     error_msg: str | None = None,
 ) -> None:
+    """Старая запись для дедупа и истории доставок. Лента чата — отдельная запись в messages."""
     session.add(
         NotificationLog(
             event_id=event.id,
@@ -67,6 +68,27 @@ async def _log(
             days_before=days_before,
             status=status,
             error_msg=error_msg,
+        )
+    )
+    await session.commit()
+
+
+async def _record_event_reminder(
+    session: AsyncSession,
+    *,
+    event: Event,
+    days_before: int,
+    text: str,
+    delivered_count: int,
+) -> None:
+    """Одна запись в `messages` для ленты чата."""
+    session.add(
+        Message(
+            message_type="event_reminder",
+            text_preview=text[:500],
+            event_id=event.id,
+            days_before=days_before,
+            delivered_count=delivered_count,
         )
     )
     await session.commit()
@@ -89,7 +111,10 @@ async def _send_event_reminders(bot: Bot | None) -> None:
     """Основная задача: разослать напоминания тем, кому они положены сегодня.
 
     Один юзер получает максимум одно напоминание о событии за N дней — независимо от
-    того, на скольких платформах он есть. Если на нескольких — шлём во все."""
+    того, на скольких платформах он есть. Если на нескольких — шлём во все.
+
+    По итогам рассылки пишет ОДНУ запись в `messages` (для ленты чата).
+    """
     today = _now_in_tz().date()
     async with AsyncSessionLocal() as session:
         events = (
@@ -113,6 +138,7 @@ async def _send_event_reminders(bot: Bot | None) -> None:
             ).scalars().all()
 
             text = _format_reminder(ev, days_left)
+            delivered_count = 0
 
             for user in users:
                 types = user.notification_types or {}
@@ -146,6 +172,16 @@ async def _send_event_reminders(bot: Bot | None) -> None:
                     await _log(
                         session, event=ev, user=user, days_before=days_left, status="sent"
                     )
+                    delivered_count += 1
+
+            if delivered_count > 0:
+                await _record_event_reminder(
+                    session,
+                    event=ev,
+                    days_before=days_left,
+                    text=text,
+                    delivered_count=delivered_count,
+                )
 
 
 def start_scheduler(bot: Bot | None) -> AsyncIOScheduler:

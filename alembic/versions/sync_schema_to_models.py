@@ -238,6 +238,28 @@ def upgrade() -> None:
     )
 
     # -------------------------------------------------------------------------
+    # messages — лента чата портала (одна строка на сообщение)
+    # -------------------------------------------------------------------------
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS messages (
+            id SERIAL PRIMARY KEY,
+            message_type VARCHAR(50) NOT NULL,
+            text_preview VARCHAR(500) NOT NULL,
+            event_id INTEGER REFERENCES events(id),
+            days_before INTEGER,
+            delivered_count INTEGER NOT NULL DEFAULT 0,
+            sender_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_messages_sent_at "
+        "ON messages(sent_at DESC)"
+    )
+
+    # -------------------------------------------------------------------------
     # password_reset_codes — таблица может не существовать
     # -------------------------------------------------------------------------
     op.execute(
@@ -260,6 +282,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # Откатываем в обратном порядке.
+    op.execute("DROP TABLE IF EXISTS messages")
     op.execute("DROP TABLE IF EXISTS password_reset_codes")
     op.execute("ALTER TABLE notification_logs DROP COLUMN IF EXISTS text_preview")
     op.execute("ALTER TABLE notification_logs DROP COLUMN IF EXISTS error_msg")

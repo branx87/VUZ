@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import AsyncSessionLocal
-from app.domain.models import NotificationLog, User
+from app.domain.models import Message, NotificationLog, User
 from app.repositories.events import EventRepository
 from app.repositories.materials import MaterialCategoryRepository, MaterialRepository
 from app.repositories.schedule import ScheduleRepository
@@ -265,8 +265,8 @@ async def portal_dashboard(request: Request):
         user = await UserRepository(session).get_by_id(me["id"])
         recent_logs = (
             await session.execute(
-                select(NotificationLog)
-                .order_by(NotificationLog.sent_at.desc())
+                select(Message)
+                .order_by(Message.sent_at.desc())
                 .limit(100)
             )
         ).scalars().all()

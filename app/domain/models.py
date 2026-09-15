@@ -62,7 +62,11 @@ class User(Base):
 
 
 class NotificationLog(Base):
-    """Лог отправленных уведомлений — для дедупликации и отладки."""
+    """Лог доставок уведомлений по юзерам (исторические данные; для рассылок больше не пишется).
+
+    Для новой ленты сообщений используется таблица `messages` — одна строка на сообщение,
+    независимо от числа получателей.
+    """
 
     __tablename__ = "notification_logs"
 
@@ -80,6 +84,35 @@ class NotificationLog(Base):
     )
 
     user: Mapped["User"] = relationship(back_populates="notification_logs")
+
+
+class Message(Base):
+    """Одно сообщение в ленте чата портала. Одна строка на сообщение.
+
+    Сюда пишут:
+      - broadcast.py (админ-рассылка) → message_type='news';
+      - scheduler/reminders.py (напоминания о событиях) → message_type='event_reminder'.
+
+    Доставка конкретным юзерам — в `message_deliveries` (опционально, для аналитики и ретраев).
+    В чате портала показываются все messages глобально.
+    """
+
+    __tablename__ = "messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    message_type: Mapped[str] = mapped_column(String(50))
+    text_preview: Mapped[str] = mapped_column(String(500))
+    event_id: Mapped[Optional[int]] = mapped_column(ForeignKey("events.id"), nullable=True)
+    days_before: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Сколько юзеров получили (для админской аналитики).
+    delivered_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Кто отправил (admin user.id) или NULL для системных (напоминания).
+    sender_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    sent_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class Event(Base):

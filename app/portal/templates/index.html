@@ -126,18 +126,18 @@
         <h2 class="text-lg font-semibold mb-3">💬 Чат</h2>
         {% if recent_logs %}
           <div class="space-y-3 lg:flex-1 lg:overflow-y-auto">
-            {% for log in recent_logs %}
+            {% for msg in recent_logs %}
               <div>
-                <div class="chat-bubble {% if log.status == 'failed' %}chat-failed{% endif %}">
-                  {% if log.text_preview %}
-                    <div class="whitespace-pre-line break-words">{{ log.text_preview }}</div>
+                <div class="chat-bubble">
+                  {% if msg.text_preview %}
+                    <div class="whitespace-pre-line break-words">{{ msg.text_preview }}</div>
                   {% else %}
                     <div class="text-gray-400 italic">—</div>
                   {% endif %}
                 </div>
                 <div class="chat-meta">
-                  {{ log.sent_at.strftime('%d.%m %H:%M') }}
-                  {% if log.status == 'failed' %} · ошибка{% endif %}
+                  {{ msg.sent_at.strftime('%d.%m %H:%M') }}
+                  · {{ msg.delivered_count }} чел.
                 </div>
               </div>
             {% endfor %}
