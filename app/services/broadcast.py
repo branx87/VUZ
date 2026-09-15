@@ -15,36 +15,66 @@ from aiogram.exceptions import TelegramRetryAfter
 
 from app.config import settings
 from app.database import AsyncSessionLocal
+from app.domain.models import NotificationLog
 from app.integrations.vk.api import VKApi, vk_api as default_vk_api
 from app.repositories.users import UserRepository
 
 logger = logging.getLogger(__name__)
+
+_BROADCAST_LOG_TYPE = "news"
 
 
 async def _send_with_retry(
     coro_factory: Callable[[], Awaitable[Any]],
     *,
     max_attempts: int = 3,
-) -> bool:
-    """Отправляет сообщение с ретраем на TelegramRetryAfter (3 попытки)."""
+) -> tuple[bool, str | None]:
+    """Отправляет сообщение с ретраем на TelegramRetryAfter (3 попытки).
+    Возвращает (success, error_text_or_None)."""
+    last_err: str | None = None
     for attempt in range(1, max_attempts + 1):
         try:
             await coro_factory()
-            return True
+            return True, None
         except TelegramRetryAfter as exc:
             wait = exc.retry_after + 1
             logger.warning("Telegram RetryAfter %s sec, waiting", wait)
+            last_err = f"retry_after: {wait}"
             await asyncio.sleep(wait)
         except Exception as exc:
+            last_err = str(exc)[:500]
             logger.warning("send failed (attempt %d/%d): %s", attempt, max_attempts, exc)
             if attempt == max_attempts:
-                return False
+                return False, last_err
             await asyncio.sleep(0.5)
-    return False
+    return False, last_err
+
+
+async def _log_broadcast_results(results: list[tuple[bool, int, str | None]]) -> None:
+    """Пишет в NotificationLog факт отправки каждой рассылки (sent/failed).
+    Если user_id=None — запись пропускается (теоретически не должно случаться)."""
+    if not results:
+        return
+    async with AsyncSessionLocal() as session:
+        for ok, user_id, err in results:
+            if user_id is None:
+                continue
+            session.add(
+                NotificationLog(
+                    user_id=user_id,
+                    notification_type=_BROADCAST_LOG_TYPE,
+                    status="sent" if ok else "failed",
+                    error_msg=err,
+                )
+            )
+        await session.commit()
 
 
 async def broadcast_telegram(bot: Bot, text: str, *, concurrency: int = 25) -> tuple[int, int]:
     """Шлёт текст всем Telegram-подписчикам, уважая RetryAfter.
+
+    Для каждой отправки пишет запись в NotificationLog с notification_type='news',
+    чтобы юзер видел рассылку в /portal/dashboard.
 
     Returns: (sent, failed)
     """
@@ -53,16 +83,19 @@ async def broadcast_telegram(bot: Bot, text: str, *, concurrency: int = 25) -> t
 
     sem = asyncio.Semaphore(concurrency)
 
-    async def _one(user) -> tuple[bool, str | None]:
+    async def _one(user) -> tuple[bool, int | None, str | None]:
         async with sem:
-            ok = await _send_with_retry(
+            ok, err = await _send_with_retry(
                 lambda: bot.send_message(int(user.telegram_user_id), text)
             )
-            return ok, user.telegram_user_id
+            return ok, user.id, err
 
     results = await asyncio.gather(*[_one(u) for u in users], return_exceptions=False)
-    sent = sum(1 for ok, _ in results if ok)
+    sent = sum(1 for ok, _, _ in results if ok)
     failed = len(results) - sent
+
+    await _log_broadcast_results(results)
+
     logger.info("TG broadcast done: sent=%d failed=%d (users=%d)", sent, failed, len(users))
     return sent, failed
 
@@ -76,6 +109,8 @@ async def broadcast_vk(
     """Шлёт текст всем VK-подписчикам.
 
     VK Community API лимитирован ~3 msg/s на сообщество; используем Semaphore(3).
+    Пишет записи в NotificationLog (notification_type='news'), чтобы рассылка
+    отображалась в /portal/dashboard.
     """
     api = vk_api or default_vk_api
     async with AsyncSessionLocal() as session:
@@ -83,18 +118,21 @@ async def broadcast_vk(
 
     sem = asyncio.Semaphore(concurrency)
 
-    async def _one(user) -> tuple[bool, str | None]:
+    async def _one(user) -> tuple[bool, int | None, str | None]:
         async with sem:
             try:
                 await api.send_message(int(user.vk_user_id), text)
-                return True, user.vk_user_id
+                return True, user.id, None
             except Exception as exc:
                 logger.warning("VK broadcast failed for user %s: %s", user.vk_user_id, exc)
-                return False, user.vk_user_id
+                return False, user.id, str(exc)[:500]
 
     results = await asyncio.gather(*[_one(u) for u in users], return_exceptions=False)
-    sent = sum(1 for ok, _ in results if ok)
+    sent = sum(1 for ok, _, _ in results if ok)
     failed = len(results) - sent
+
+    await _log_broadcast_results(results)
+
     logger.info("VK broadcast done: sent=%d failed=%d (users=%d)", sent, failed, len(users))
     return sent, failed
 
