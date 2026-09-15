@@ -1,11 +1,15 @@
-"""Регистрация TG-юзера по образцу lunch_bot (без проверки списка сотрудников).
+"""Регистрация TG-юзера по email.
 
 Поток:
-1. /start (или любое сообщение) → EnsureTelegramUserMiddleware регистрирует юзера.
-2. Если full_name пустое — спрашиваем имя+фамилию, ждём ввода.
-3. Юзер пишет «Иванов Иван» → сохраняем в БД, показываем главное меню.
+1. /start (или любое сообщение) → EnsureTelegramUserMiddleware регистрирует TG id.
+2. Если у юзера ещё нет email — спрашиваем email.
+3. Юзер пишет email → проверяем в БД:
+   - есть с таким email → привязываем TG id к этой строке, заполняем имя
+   - нет → создаём строку с этим email и TG id
+4. После — пишем: чтобы зайти на сайт, зарегистрируйся там с этим email.
 """
 import logging
+import re
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware, F, Router
@@ -38,13 +42,16 @@ _MAIN_KB = ReplyKeyboardMarkup(
     persistent=True,
 )
 
+# Простая проверка формата email.
+_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
-class AwaitingName(StatesGroup):
-    waiting_name = State()
+
+class AwaitingEmail(StatesGroup):
+    waiting_email = State()
 
 
 class EnsureTelegramUserMiddleware(BaseMiddleware):
-    """Регистрирует любого TG-юзера при первом контакте."""
+    """Регистрирует любого TG-юзера при первом контакте (только platform id)."""
 
     async def __call__(
         self,
@@ -69,6 +76,44 @@ class EnsureTelegramUserMiddleware(BaseMiddleware):
 router.message.middleware(EnsureTelegramUserMiddleware())
 
 
+async def _link_or_create_by_email(telegram_user_id: str, email: str, full_name: str | None) -> User:
+    """Найти юзера по email и привязать к нему TG id, либо создать нового."""
+    async with AsyncSessionLocal() as session:
+        repo = UserRepository(session)
+        existing = await repo.get_by_email(email)
+        if existing:
+            # Привязываем TG id к существующему юзеру (если у него ещё нет TG).
+            if not existing.telegram_user_id:
+                await session.execute(
+                    update(User)
+                    .where(User.id == existing.id)
+                    .values(
+                        telegram_user_id=telegram_user_id,
+                        telegram_username=None,
+                    )
+                )
+                await session.commit()
+                await session.refresh(existing)
+            # Дозаполняем имя, если было пусто.
+            if not existing.full_name and full_name:
+                existing.full_name = full_name
+                await session.commit()
+                await session.refresh(existing)
+            return existing
+        # Создаём нового юзера с email + TG id.
+        user = User(
+            email=email,
+            telegram_user_id=telegram_user_id,
+            telegram_username=None,
+            full_name=full_name,
+            is_web_active=True,  # email подтверждён, можно пускать на портал (когда задаст пароль)
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        return user
+
+
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext) -> None:
     user = message.from_user
@@ -78,51 +123,56 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
     async with AsyncSessionLocal() as session:
         existing = await UserRepository(session).get_by_telegram_id(str(user.id))
 
-    # Если у юзера уже есть имя (из Telegram-профиля или от прошлого ввода) — сразу в меню.
-    if existing and existing.full_name and existing.full_name.strip():
-        first = existing.full_name.split()[0]
-        await message.answer(
-            f"Привет, {first}! Я бот группы 231/232 👋\n\nВыбери раздел:",
-            reply_markup=_MAIN_KB,
-        )
+    if existing and existing.email:
+        await _show_menu(message, existing.full_name)
         await state.clear()
         return
 
-    # Иначе — спрашиваем имя-фамилию.
-    await state.set_state(AwaitingName.waiting_name)
+    # Нет email — спрашиваем.
+    await state.set_state(AwaitingEmail.waiting_email)
     await message.answer(
         "Привет! Я бот группы 231/232 👋\n\n"
-        "Напиши, пожалуйста, имя и фамилию — например:\n"
-        "<code>Иванов Иван</code>",
+        "Чтобы я тебя узнавал, напиши свой email — "
+        "он же пригодится, чтобы зайти на сайт с расписанием.\n\n"
+        "Например: <code>ivan@example.com</code>"
     )
 
 
-@router.message(AwaitingName.waiting_name, F.text)
-async def receive_name(message: Message, state: FSMContext) -> None:
+async def _show_menu(message: Message, full_name: str | None) -> None:
+    first = full_name.split()[0] if full_name else "друг"
+    await message.answer(
+        f"Привет, {first}! Я бот группы 231/232 👋\n\nВыбери раздел:",
+        reply_markup=_MAIN_KB,
+    )
+
+
+@router.message(AwaitingEmail.waiting_email, F.text)
+async def receive_email(message: Message, state: FSMContext) -> None:
     user = message.from_user
     if not user:
         return
 
-    parts = (message.text or "").strip().split()
-    if len(parts) < 2:
+    email = (message.text or "").strip().lower()
+    if not _EMAIL_RE.match(email):
         await message.answer(
-            "❌ Нужны минимум имя и фамилия (два слова).\n"
-            "Пример: <code>Иванов Иван</code>"
+            "❌ Это не похоже на email.\n"
+            "Пример правильного формата: <code>ivan@example.com</code>"
         )
         return
 
-    full_name = " ".join(parts).strip()
-    async with AsyncSessionLocal() as session:
-        await session.execute(
-            update(User)
-            .where(User.telegram_user_id == str(user.id))
-            .values(full_name=full_name)
-        )
-        await session.commit()
+    tg_user = await _link_or_create_by_email(
+        telegram_user_id=str(user.id),
+        email=email,
+        full_name=user.full_name,
+    )
 
     await state.clear()
-    first = full_name.split()[0]
+
+    portal_url = f"{settings.app_base_url.rstrip('/')}/portal/register"
     await message.answer(
-        f"✅ Записал: <b>{full_name}</b>\n\nПривет, {first}! Выбери раздел:",
+        f"✅ Email записан: <b>{email}</b>\n\n"
+        f"Чтобы зайти на сайт с расписанием, открой:\n"
+        f"<a href=\"{portal_url}\">{portal_url}</a>\n\n"
+        f"Там зарегистрируйся с этим же email — пароль задашь только там.",
         reply_markup=_MAIN_KB,
     )

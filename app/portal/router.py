@@ -98,7 +98,6 @@ async def do_register(
     first_name = first_name.strip()
     last_name = last_name.strip()
     email = email.strip().lower()
-    error_redirect = RedirectResponse("/portal/register?error=", status_code=302)
 
     if not first_name or not last_name:
         return RedirectResponse("/portal/register?error=Введите+имя+и+фамилию", status_code=302)
@@ -109,20 +108,54 @@ async def do_register(
     if password != password2:
         return RedirectResponse("/portal/register?error=Пароли+не+совпадают", status_code=302)
 
+    from app.domain.models import User
+    from sqlalchemy import update
+
+    full_name = f"{first_name} {last_name}".strip()
     async with AsyncSessionLocal() as session:
         repo = UserRepository(session)
-        if await repo.get_by_email(email):
+        existing = await repo.get_by_email(email)
+
+        if existing is None:
+            # Совсем новый юзер.
+            await repo.create_web_user(
+                email=email,
+                password_hash=_hash_password(password),
+                first_name=first_name,
+                last_name=last_name,
+            )
+        elif not existing.password_hash:
+            # Юзер уже зарегался через бота, но без пароля — устанавливаем пароль.
+            await session.execute(
+                update(User)
+                .where(User.id == existing.id)
+                .values(password_hash=_hash_password(password), full_name=full_name)
+            )
+            await session.commit()
+        else:
+            # Email уже с паролем — конфликт.
             return RedirectResponse(
                 "/portal/register?error=Этот+email+уже+зарегистрирован",
                 status_code=302,
             )
-        await repo.create_web_user(
-            email=email,
-            password_hash=_hash_password(password),
-            first_name=first_name,
-            last_name=last_name,
-        )
-    return RedirectResponse("/portal/register?ok=1", status_code=302)
+
+    # Автоматически логиним после успешной регистрации.
+    request.session["portal_user"] = {
+        "id": existing.id if existing else None,
+        "email": email,
+        "full_name": full_name,
+    }
+    # Перечитать id юзера, если создавали нового
+    if existing is None:
+        async with AsyncSessionLocal() as session:
+            new_user = await UserRepository(session).get_by_email(email)
+        request.session["portal_user"] = {
+            "id": new_user.id,
+            "email": email,
+            "full_name": full_name,
+        }
+
+    return RedirectResponse("/portal/dashboard", status_code=302)
 
 
 @router.get("/login", response_class=HTMLResponse)

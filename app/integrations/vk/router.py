@@ -50,13 +50,13 @@ async def dispatch_message(message: dict) -> None:
         except Exception as exc:
             logger.warning("VK upsert on incoming failed: %s", exc)
 
-    # Если юзер сейчас в режиме ожидания имени — перехватываем любое сообщение.
+    # Если юзер сейчас в режиме ожидания email — перехватываем любое сообщение.
     if from_id:
-        from app.integrations.vk.handlers.schedule import _awaiting_name, handle_awaiting_name
-        if _awaiting_name.get(from_id):
+        from app.integrations.vk.handlers.schedule import _awaiting_email, handle_awaiting_email
+        if _awaiting_email.get(from_id):
             if text:
-                await handle_awaiting_name(message)
-            return  # Не диспетчеризируем дальше, пока юзер не ввёл имя.
+                await handle_awaiting_email(message)
+            return  # Не диспетчеризируем дальше, пока юзер не ввёл email.
 
     text_lower = text.lower()
     handler = _dispatch.get(text_lower)
