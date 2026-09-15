@@ -77,41 +77,51 @@ router.message.middleware(EnsureTelegramUserMiddleware())
 
 
 async def _link_or_create_by_email(telegram_user_id: str, email: str, full_name: str | None) -> User:
-    """Найти юзера по email и привязать к нему TG id, либо создать нового."""
+    """Найти юзера по email и привязать к нему TG id, либо создать нового.
+
+    Если этот TG id уже занят другим юзером — сначала очищаем его там,
+    чтобы привязка прошла без конфликта уникального constraint.
+    """
     async with AsyncSessionLocal() as session:
         repo = UserRepository(session)
         existing = await repo.get_by_email(email)
-        if existing:
-            # Привязываем TG id к существующему юзеру (если у него ещё нет TG).
-            if not existing.telegram_user_id:
-                await session.execute(
-                    update(User)
-                    .where(User.id == existing.id)
-                    .values(
-                        telegram_user_id=telegram_user_id,
-                        telegram_username=None,
-                    )
-                )
-                await session.commit()
-                await session.refresh(existing)
-            # Дозаполняем имя, если было пусто.
-            if not existing.full_name and full_name:
-                existing.full_name = full_name
-                await session.commit()
-                await session.refresh(existing)
-            return existing
-        # Создаём нового юзера с email + TG id.
-        user = User(
-            email=email,
-            telegram_user_id=telegram_user_id,
-            telegram_username=None,
-            full_name=full_name,
-            is_web_active=True,  # email подтверждён, можно пускать на портал (когда задаст пароль)
-        )
-        session.add(user)
-        await session.commit()
-        await session.refresh(user)
-        return user
+        target = existing
+
+        if target is None:
+            # Создаём нового юзера с email + TG id.
+            user = User(
+                email=email,
+                telegram_user_id=telegram_user_id,
+                telegram_username=None,
+                full_name=full_name,
+                is_web_active=True,
+            )
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+            return user
+
+        # Найден по email. Если этот TG id уже у другой строки — очищаем там.
+        if target.telegram_user_id != telegram_user_id:
+            await session.execute(
+                update(User)
+                .where(User.telegram_user_id == telegram_user_id)
+                .values(telegram_user_id=None, telegram_username=None)
+            )
+
+        # Привязываем TG id к найденной строке.
+        if target.telegram_user_id != telegram_user_id:
+            target.telegram_user_id = telegram_user_id
+            target.telegram_username = None
+            await session.commit()
+            await session.refresh(target)
+
+        # Дозаполняем имя, если было пусто.
+        if not target.full_name and full_name:
+            target.full_name = full_name
+            await session.commit()
+            await session.refresh(target)
+        return target
 
 
 @router.message(Command("start"))

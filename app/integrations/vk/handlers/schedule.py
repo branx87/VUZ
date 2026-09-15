@@ -45,34 +45,48 @@ async def _register_user(msg: dict) -> None:
 
 
 async def _link_or_create_by_email(vk_user_id: str, email: str, full_name: str | None) -> User:
+    """Найти юзера по email и привязать к нему VK id, либо создать нового.
+
+    Если этот VK id уже занят другой строкой — сначала очищаем там,
+    чтобы избежать конфликта unique constraint.
+    """
     async with AsyncSessionLocal() as session:
         repo = UserRepository(session)
         existing = await repo.get_by_email(email)
-        if existing:
-            if not existing.vk_user_id:
-                await session.execute(
-                    update(User)
-                    .where(User.id == existing.id)
-                    .values(vk_user_id=vk_user_id, vk_username=None)
-                )
-                await session.commit()
-                await session.refresh(existing)
-            if not existing.full_name and full_name:
-                existing.full_name = full_name
-                await session.commit()
-                await session.refresh(existing)
-            return existing
-        user = User(
-            email=email,
-            vk_user_id=vk_user_id,
-            vk_username=None,
-            full_name=full_name,
-            is_web_active=True,
-        )
-        session.add(user)
-        await session.commit()
-        await session.refresh(user)
-        return user
+        target = existing
+
+        if target is None:
+            user = User(
+                email=email,
+                vk_user_id=vk_user_id,
+                vk_username=None,
+                full_name=full_name,
+                is_web_active=True,
+            )
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+            return user
+
+        # Найден по email. Если VK id занят другой строкой — очищаем там.
+        if target.vk_user_id != vk_user_id:
+            await session.execute(
+                update(User)
+                .where(User.vk_user_id == vk_user_id)
+                .values(vk_user_id=None, vk_username=None)
+            )
+
+        if target.vk_user_id != vk_user_id:
+            target.vk_user_id = vk_user_id
+            target.vk_username = None
+            await session.commit()
+            await session.refresh(target)
+
+        if not target.full_name and full_name:
+            target.full_name = full_name
+            await session.commit()
+            await session.refresh(target)
+        return target
 
 
 async def handle_start(msg: dict) -> None:
