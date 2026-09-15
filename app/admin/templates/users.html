@@ -55,21 +55,23 @@
         </td>
         <td class="py-2 px-3 text-gray-500 text-xs">{{ u.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
         <td class="py-2 px-3 text-right">
-          {% if u.is_web_active %}
-          <form method="post" action="/admin/users/{{ u.id }}/block" class="inline">
-            <button class="bg-yellow-600 hover:bg-yellow-700 text-white text-xs px-2 py-1 rounded">
-              Заблокировать
-            </button>
-          </form>
-          {% else %}
-          <form method="post" action="/admin/users/{{ u.id }}/unblock" class="inline">
-            <button class="bg-green-600 hover:bg-green-700 text-white text-xs px-2 py-1 rounded">
-              Разблокировать
-            </button>
-          </form>
+          {% if u.email %}
+            {% if u.is_web_active %}
+            <form method="post" action="/admin/users/{{ u.id }}/block" class="inline">
+              <button class="bg-yellow-600 hover:bg-yellow-700 text-white text-xs px-2 py-1 rounded">
+                Заблокировать
+              </button>
+            </form>
+            {% else %}
+            <form method="post" action="/admin/users/{{ u.id }}/unblock" class="inline">
+              <button class="bg-green-600 hover:bg-green-700 text-white text-xs px-2 py-1 rounded">
+                Разблокировать
+              </button>
+            </form>
+            {% endif %}
           {% endif %}
           <form method="post" action="/admin/users/{{ u.id }}/delete" class="inline"
-                onsubmit="return confirm('Удалить пользователя {{ u.email }}?');">
+                onsubmit="return confirm('Удалить пользователя {{ u.id }}?');">
             <button class="bg-red-600 hover:bg-red-700 text-white text-xs px-2 py-1 rounded">
               Удалить
             </button>
@@ -87,8 +89,8 @@
   <ul class="list-disc pl-5 mt-1 space-y-1">
     <li>Один человек = одна строка, даже если он есть в Telegram, VK и на портале.</li>
     <li>Колонки Telegram / VK показывают, привязан ли юзер к этим платформам.</li>
-    <li>«Заблокировать» снимает доступ к порталу без удаления. «Удалить» стирает юзера целиком.</li>
-    <li>Если TG и web-юзер — один и тот же человек, но лежат в разных строках, инструмент мёржа пока не сделан (TODO).</li>
+    <li>«Заблокировать» — снимает доступ к порталу (для тех, у кого есть email). Для TG/VK-only не имеет эффекта, они получают уведомления через свои каналы.</li>
+    <li>«Удалить» стирает юзера целиком со всеми уведомлениями.</li>
   </ul>
 </div>
 {% endblock %}

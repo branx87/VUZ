@@ -84,9 +84,16 @@ class UserRepository:
         return await self.session.get(User, user_id)
 
     async def get_all_web(self) -> list[User]:
-        """Все, у кого есть email."""
+        """Только web-юзеры (у которых есть email)."""
         result = await self.session.execute(
             select(User).where(User.email.is_not(None)).order_by(User.is_web_active, User.id)
+        )
+        return list(result.scalars().all())
+
+    async def get_all_users(self) -> list[User]:
+        """Все юзеры — web, TG и VK. Сортировка: сначала активные web, потом остальные."""
+        result = await self.session.execute(
+            select(User).order_by(User.email.is_not(None).desc(), User.is_web_active, User.id)
         )
         return list(result.scalars().all())
 

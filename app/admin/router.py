@@ -368,9 +368,9 @@ async def users_page(request: Request):
     if not _authed(request):
         return _redirect_login("/admin/users")
     async with AsyncSessionLocal() as session:
-        web_users = await UserRepository(session).get_all_web()
+        all_users = await UserRepository(session).get_all_users()
     return templates.TemplateResponse(request, "users.html", {
-        "users": web_users,
+        "users": all_users,
     })
 
 
