@@ -13,6 +13,7 @@ import logging
 from datetime import date, timedelta
 from functools import lru_cache
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import bcrypt
 from fastapi import APIRouter, Form, HTTPException, Request, status
@@ -36,6 +37,7 @@ router = APIRouter()
 _TEMPLATES = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES))
 _FILES_DIR = Path(settings.files_dir).resolve()
+_LOCAL_TZ = ZoneInfo(settings.scheduler_timezone)
 
 
 # ---------------------------------------------------------------------------
@@ -269,6 +271,11 @@ async def portal_dashboard(request: Request):
                 .limit(100)
             )
         ).scalars().all()
+
+    # Конвертируем sent_at в локальную таймзону для отображения.
+    for log in recent_logs:
+        if log.sent_at is not None and log.sent_at.tzinfo is not None:
+            log.sent_at = log.sent_at.astimezone(_LOCAL_TZ)
 
     by_day: dict[int, list] = {i: [] for i in range(7)}
     for e in entries:

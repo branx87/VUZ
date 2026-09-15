@@ -73,6 +73,8 @@ class NotificationLog(Base):
     days_before: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(20))  # "sent" / "failed"
     error_msg: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # Превью текста рассылки/напоминания — для отображения в /portal/dashboard.
+    text_preview: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     sent_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

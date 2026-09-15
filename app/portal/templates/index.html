@@ -113,16 +113,26 @@
       <div class="bg-white rounded-xl shadow p-5">
         <h2 class="text-lg font-semibold mb-3">📨 Последние уведомления</h2>
         {% if recent_logs %}
-          <ul class="space-y-2 text-sm">
+          <ul class="space-y-3 text-sm">
             {% for log in recent_logs %}
-              <li>
-                <span class="text-xs text-gray-500">{{ log.sent_at.strftime('%d.%m %H:%M') }}</span>
-                <span class="ml-2">
-                  {% if log.notification_type == 'event_reminder' %}🔔{% elif log.notification_type == 'schedule_change' %}🔄{% else %}📢{% endif %}
-                  {% if log.status == 'failed' %}<span class="text-red-600">[ошибка]</span>{% endif %}
-                  {{ log.notification_type }}
-                  {% if log.days_before is not none %}· за {{ log.days_before }} дн.{% endif %}
-                </span>
+              <li class="border-b border-gray-100 pb-2 last:border-b-0 last:pb-0">
+                <div>
+                  <span class="text-xs text-gray-500">{{ log.sent_at.strftime('%d.%m %H:%M') }}</span>
+                  <span class="ml-2">
+                    {% if log.notification_type == 'event_reminder' %}🔔{% elif log.notification_type == 'schedule_change' %}🔄{% else %}📢{% endif %}
+                    {% if log.status == 'failed' %}<span class="text-red-600">[ошибка]</span>{% endif %}
+                    {% if log.notification_type == 'event_reminder' %}Напоминание
+                    {% elif log.notification_type == 'schedule_change' %}Изменение расписания
+                    {% else %}Новость{% endif %}
+                    {% if log.days_before is not none %}· за {{ log.days_before }} дн.{% endif %}
+                  </span>
+                </div>
+                {% if log.text_preview %}
+                  <div class="mt-1 text-gray-700 whitespace-pre-line break-words">{{ log.text_preview }}</div>
+                {% endif %}
+                {% if log.error_msg and log.status == 'failed' %}
+                  <div class="mt-1 text-xs text-red-600">{{ log.error_msg }}</div>
+                {% endif %}
               </li>
             {% endfor %}
           </ul>

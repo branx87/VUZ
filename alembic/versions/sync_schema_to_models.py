@@ -232,6 +232,10 @@ def upgrade() -> None:
         "ALTER TABLE notification_logs "
         "ADD COLUMN IF NOT EXISTS error_msg VARCHAR(500)"
     )
+    op.execute(
+        "ALTER TABLE notification_logs "
+        "ADD COLUMN IF NOT EXISTS text_preview VARCHAR(500)"
+    )
 
     # -------------------------------------------------------------------------
     # password_reset_codes — таблица может не существовать
@@ -257,6 +261,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     # Откатываем в обратном порядке.
     op.execute("DROP TABLE IF EXISTS password_reset_codes")
+    op.execute("ALTER TABLE notification_logs DROP COLUMN IF EXISTS text_preview")
     op.execute("ALTER TABLE notification_logs DROP COLUMN IF EXISTS error_msg")
     op.execute("ALTER TABLE notification_logs DROP COLUMN IF EXISTS status")
     op.execute("ALTER TABLE notification_logs DROP COLUMN IF EXISTS notification_type")

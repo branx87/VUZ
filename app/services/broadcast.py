@@ -50,11 +50,16 @@ async def _send_with_retry(
     return False, last_err
 
 
-async def _log_broadcast_results(results: list[tuple[bool, int, str | None]]) -> None:
+async def _log_broadcast_results(
+    results: list[tuple[bool, int, str | None]],
+    *,
+    text_preview: str | None = None,
+) -> None:
     """Пишет в NotificationLog факт отправки каждой рассылки (sent/failed).
     Если user_id=None — запись пропускается (теоретически не должно случаться)."""
     if not results:
         return
+    preview = text_preview[:500] if text_preview else None
     async with AsyncSessionLocal() as session:
         for ok, user_id, err in results:
             if user_id is None:
@@ -65,6 +70,7 @@ async def _log_broadcast_results(results: list[tuple[bool, int, str | None]]) ->
                     notification_type=_BROADCAST_LOG_TYPE,
                     status="sent" if ok else "failed",
                     error_msg=err,
+                    text_preview=preview,
                 )
             )
         await session.commit()
@@ -94,7 +100,7 @@ async def broadcast_telegram(bot: Bot, text: str, *, concurrency: int = 25) -> t
     sent = sum(1 for ok, _, _ in results if ok)
     failed = len(results) - sent
 
-    await _log_broadcast_results(results)
+    await _log_broadcast_results(results, text_preview=text)
 
     logger.info("TG broadcast done: sent=%d failed=%d (users=%d)", sent, failed, len(users))
     return sent, failed
@@ -131,7 +137,7 @@ async def broadcast_vk(
     sent = sum(1 for ok, _, _ in results if ok)
     failed = len(results) - sent
 
-    await _log_broadcast_results(results)
+    await _log_broadcast_results(results, text_preview=text)
 
     logger.info("VK broadcast done: sent=%d failed=%d (users=%d)", sent, failed, len(users))
     return sent, failed
