@@ -50,25 +50,29 @@ async def _send_with_retry(
     return False, last_err
 
 
-async def _log_broadcast_results(
-    results: list[tuple[bool, int, str | None]],
+async def _log_combined_broadcast(
     *,
-    text_preview: str | None = None,
+    by_user: dict[int, dict[str, tuple[bool, str | None]]],
+    text_preview: str | None,
 ) -> None:
-    """Пишет в NotificationLog факт отправки каждой рассылки (sent/failed).
-    Если user_id=None — запись пропускается (теоретически не должно случаться)."""
-    if not results:
+    """Одна запись на юзера: считаем доставленным если хотя бы на одной платформе ok.
+    text_preview для всех одинаковый — берётся один раз из аргумента."""
+    if not by_user:
         return
     preview = text_preview[:500] if text_preview else None
     async with AsyncSessionLocal() as session:
-        for ok, user_id, err in results:
-            if user_id is None:
-                continue
+        for user_id, platforms in by_user.items():
+            # Если хоть одна платформа доставила — статус "sent". Иначе "failed".
+            sent_ok = any(ok for ok, _ in platforms.values())
+            # Текст ошибки — от первой упавшей платформы (если есть).
+            err: str | None = next(
+                (e for ok, e in platforms.values() if not ok and e), None
+            )
             session.add(
                 NotificationLog(
                     user_id=user_id,
                     notification_type=_BROADCAST_LOG_TYPE,
-                    status="sent" if ok else "failed",
+                    status="sent" if sent_ok else "failed",
                     error_msg=err,
                     text_preview=preview,
                 )
@@ -76,34 +80,32 @@ async def _log_broadcast_results(
         await session.commit()
 
 
-async def broadcast_telegram(bot: Bot, text: str, *, concurrency: int = 25) -> tuple[int, int]:
+async def broadcast_telegram(
+    bot: Bot, text: str, *, concurrency: int = 25
+) -> dict[int, tuple[bool, str | None]]:
     """Шлёт текст всем Telegram-подписчикам, уважая RetryAfter.
-
-    Для каждой отправки пишет запись в NotificationLog с notification_type='news',
-    чтобы юзер видел рассылку в /portal/dashboard.
-
-    Returns: (sent, failed)
+    Возвращает {user_id: (ok, err)} — без записи в NotificationLog; её пишет broadcast_all.
     """
     async with AsyncSessionLocal() as session:
         users = await UserRepository(session).get_all_telegram()
 
     sem = asyncio.Semaphore(concurrency)
 
-    async def _one(user) -> tuple[bool, int | None, str | None]:
+    async def _one(user) -> tuple[int | None, bool, str | None]:
         async with sem:
             ok, err = await _send_with_retry(
                 lambda: bot.send_message(int(user.telegram_user_id), text)
             )
-            return ok, user.id, err
+            return user.id, ok, err
 
-    results = await asyncio.gather(*[_one(u) for u in users], return_exceptions=False)
-    sent = sum(1 for ok, _, _ in results if ok)
-    failed = len(results) - sent
-
-    await _log_broadcast_results(results, text_preview=text)
-
+    raw = await asyncio.gather(*[_one(u) for u in users], return_exceptions=False)
+    out: dict[int, tuple[bool, str | None]] = {
+        uid: (ok, err) for uid, ok, err in raw if uid is not None
+    }
+    sent = sum(1 for ok, _ in out.values() if ok)
+    failed = len(out) - sent
     logger.info("TG broadcast done: sent=%d failed=%d (users=%d)", sent, failed, len(users))
-    return sent, failed
+    return out
 
 
 async def broadcast_vk(
@@ -111,12 +113,9 @@ async def broadcast_vk(
     *,
     vk_api: VKApi | None = None,
     concurrency: int = 3,
-) -> tuple[int, int]:
+) -> dict[int, tuple[bool, str | None]]:
     """Шлёт текст всем VK-подписчикам.
-
-    VK Community API лимитирован ~3 msg/s на сообщество; используем Semaphore(3).
-    Пишет записи в NotificationLog (notification_type='news'), чтобы рассылка
-    отображалась в /portal/dashboard.
+    Возвращает {user_id: (ok, err)} — без записи в NotificationLog; её пишет broadcast_all.
     """
     api = vk_api or default_vk_api
     async with AsyncSessionLocal() as session:
@@ -124,28 +123,47 @@ async def broadcast_vk(
 
     sem = asyncio.Semaphore(concurrency)
 
-    async def _one(user) -> tuple[bool, int | None, str | None]:
+    async def _one(user) -> tuple[int | None, bool, str | None]:
         async with sem:
             try:
                 await api.send_message(int(user.vk_user_id), text)
-                return True, user.id, None
+                return user.id, True, None
             except Exception as exc:
                 logger.warning("VK broadcast failed for user %s: %s", user.vk_user_id, exc)
-                return False, user.id, str(exc)[:500]
+                return user.id, False, str(exc)[:500]
 
-    results = await asyncio.gather(*[_one(u) for u in users], return_exceptions=False)
-    sent = sum(1 for ok, _, _ in results if ok)
-    failed = len(results) - sent
-
-    await _log_broadcast_results(results, text_preview=text)
-
+    raw = await asyncio.gather(*[_one(u) for u in users], return_exceptions=False)
+    out: dict[int, tuple[bool, str | None]] = {
+        uid: (ok, err) for uid, ok, err in raw if uid is not None
+    }
+    sent = sum(1 for ok, _ in out.values() if ok)
+    failed = len(out) - sent
     logger.info("VK broadcast done: sent=%d failed=%d (users=%d)", sent, failed, len(users))
-    return sent, failed
+    return out
 
 
 async def broadcast_all(bot: Bot, text: str) -> dict[str, tuple[int, int]]:
-    """Рассылает по всем платформам параллельно. Возвращает {platform: (sent, failed)}."""
+    """Рассылает по всем платформам параллельно. Возвращает {platform: (sent, failed)}.
+
+    Запись в NotificationLog — ровно одна на юзера (даже если у него и TG, и VK).
+    Статус — "sent" если доставлено хотя бы на одной платформе.
+    """
     tg_task = broadcast_telegram(bot, text)
     vk_task = broadcast_vk(text)
-    tg_result, vk_result = await asyncio.gather(tg_task, vk_task)
-    return {"telegram": tg_result, "vk": vk_result}
+    tg_results, vk_results = await asyncio.gather(tg_task, vk_task)
+
+    # Объединяем результаты по user_id.
+    by_user: dict[int, dict[str, tuple[bool, str | None]]] = {}
+    for uid, res in tg_results.items():
+        by_user.setdefault(uid, {})["telegram"] = res
+    for uid, res in vk_results.items():
+        by_user.setdefault(uid, {})["vk"] = res
+
+    await _log_combined_broadcast(by_user=by_user, text_preview=text)
+
+    tg_sent = sum(1 for ok, _ in tg_results.values() if ok)
+    vk_sent = sum(1 for ok, _ in vk_results.values() if ok)
+    return {
+        "telegram": (tg_sent, len(tg_results) - tg_sent),
+        "vk": (vk_sent, len(vk_results) - vk_sent),
+    }

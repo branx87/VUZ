@@ -10,6 +10,10 @@
     .pair-row:last-child { border-bottom: none; }
     .pair-time { color: #6b7280; min-width: 110px; font-variant-numeric: tabular-nums; }
     .pair-subj { font-weight: 600; }
+    /* Чат: пузыри как в мессенджере, без лейблов типа. */
+    .chat-bubble { background: #eef2ff; border-radius: 14px; padding: 0.6rem 0.85rem; max-width: 100%; }
+    .chat-meta { font-size: 0.7rem; color: #6b7280; margin-top: 0.15rem; }
+    .chat-failed { background: #fee2e2; }
   </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -24,123 +28,125 @@
   </span>
 </nav>
 
-<main class="max-w-5xl mx-auto p-6 space-y-6">
+<main class="max-w-7xl mx-auto p-6">
 
-  <header>
+  <header class="mb-6">
     <h1 class="text-2xl font-bold">Привет, {{ (me.full_name or me.email).split(' ')[0] }}!</h1>
     <p class="text-sm text-gray-500">Сегодня: {{ today.strftime('%d.%m.%Y') }} ({{ day_names[today.weekday()] }})</p>
   </header>
 
-  {# Расписание на текущую неделю #}
-  <section class="bg-white rounded-xl shadow p-5">
-    <h2 class="text-lg font-semibold mb-3">📅 Расписание — неделя {{ week_start.strftime('%d.%m') }}</h2>
-    {% set has_any = false %}
-    {% for wd in week_days %}
-      {% if by_day[wd.dow] %}
-        {% set has_any = true %}
-        <div class="mb-4">
-          <h3 class="font-medium text-indigo-700 border-b pb-1 mb-2">{{ wd.name }}, {{ wd.date }}</h3>
-          {% for e in by_day[wd.dow] %}
-            {% set is_cancelled = e.id in cancelled_ids %}
-            <div class="pair-row {% if is_cancelled %}opacity-50 line-through{% endif %}">
-              <span class="pair-time">{{ e.time_start.strftime('%H:%M') }}–{{ e.time_end.strftime('%H:%M') }}</span>
-              <span class="pair-subj">{{ e.pair_number }}. {{ e.subject }}</span>
-              {% if e.teacher %}<span class="text-xs text-gray-500">👤 {{ e.teacher }}</span>{% endif %}
-              {% if e.room %}<span class="text-xs text-gray-500">🚪 ауд. {{ e.room }}</span>{% endif %}
-              {% if e.subgroup %}<span class="text-xs text-gray-500">[{{ e.subgroup }} п/г]</span>{% endif %}
-              {% if is_cancelled %}<span class="text-xs text-red-600">отменено</span>{% endif %}
-            </div>
-          {% endfor %}
-        </div>
-      {% endif %}
-    {% endfor %}
-    {% if not has_any %}
-      <p class="text-gray-500 text-sm">Расписание на эту неделю пока пустое.</p>
-    {% endif %}
-  </section>
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    {# Левая колонка — расписание, материалы, события #}
+    <div class="lg:col-span-2 space-y-6">
 
-    {# Материалы #}
-    <section class="bg-white rounded-xl shadow p-5">
-      <h2 class="text-lg font-semibold mb-3">📚 Материалы</h2>
-      {% if material_groups %}
-        {% for group in material_groups %}
-          {% if group['items'] %}
+      {# Расписание #}
+      <section class="bg-white rounded-xl shadow p-5">
+        <h2 class="text-lg font-semibold mb-3">📅 Расписание — неделя {{ week_start.strftime('%d.%m') }}</h2>
+        {% set has_any = false %}
+        {% for wd in week_days %}
+          {% if by_day[wd.dow] %}
+            {% set has_any = true %}
             <div class="mb-4">
-              <h3 class="font-medium text-indigo-700 mb-1">{{ group['category'].emoji }} {{ group['category'].name }}</h3>
-              <ul class="text-sm space-y-1">
-                {% for m in group['items'] %}
-                  <li>
-                    {% if m.url %}
-                      <a href="{{ m.url }}" target="_blank" class="text-indigo-600 hover:underline">{{ m.title }}</a>
-                    {% else %}
-                      <a href="/portal/api/materials/{{ m.id }}/download" class="text-indigo-600 hover:underline">{{ m.title }}</a>
-                    {% endif %}
-                    {% if m.description %}<span class="text-gray-500"> — {{ m.description }}</span>{% endif %}
-                  </li>
-                {% endfor %}
-              </ul>
+              <h3 class="font-medium text-indigo-700 border-b pb-1 mb-2">{{ wd.name }}, {{ wd.date }}</h3>
+              {% for e in by_day[wd.dow] %}
+                {% set is_cancelled = e.id in cancelled_ids %}
+                <div class="pair-row {% if is_cancelled %}opacity-50 line-through{% endif %}">
+                  <span class="pair-time">{{ e.time_start.strftime('%H:%M') }}–{{ e.time_end.strftime('%H:%M') }}</span>
+                  <span class="pair-subj">{{ e.pair_number }}. {{ e.subject }}</span>
+                  {% if e.teacher %}<span class="text-xs text-gray-500">👤 {{ e.teacher }}</span>{% endif %}
+                  {% if e.room %}<span class="text-xs text-gray-500">🚪 ауд. {{ e.room }}</span>{% endif %}
+                  {% if e.subgroup %}<span class="text-xs text-gray-500">[{{ e.subgroup }} п/г]</span>{% endif %}
+                  {% if is_cancelled %}<span class="text-xs text-red-600">отменено</span>{% endif %}
+                </div>
+              {% endfor %}
             </div>
           {% endif %}
         {% endfor %}
-      {% else %}
-        <p class="text-gray-500 text-sm">Материалов пока нет.</p>
-      {% endif %}
-    </section>
-
-    {# События + последние уведомления #}
-    <section class="space-y-6">
-      <div class="bg-white rounded-xl shadow p-5">
-        <h2 class="text-lg font-semibold mb-3">🔔 Ближайшие события</h2>
-        {% if events %}
-          <ul class="space-y-2">
-            {% for e in events %}
-              <li class="text-sm">
-                <div class="font-medium">{{ e.title }}</div>
-                <div class="text-gray-500 text-xs">
-                  📅 {{ e.event_date.strftime('%d.%m.%Y') }}{% if e.event_time %} в {{ e.event_time.strftime('%H:%M') }}{% endif %}
-                </div>
-                {% if e.description %}<div class="text-gray-600 text-xs mt-1">{{ e.description }}</div>{% endif %}
-              </li>
-            {% endfor %}
-          </ul>
-        {% else %}
-          <p class="text-gray-500 text-sm">Ближайших событий нет.</p>
+        {% if not has_any %}
+          <p class="text-gray-500 text-sm">Расписание на эту неделю пока пустое.</p>
         {% endif %}
+      </section>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {# Материалы #}
+        <section class="bg-white rounded-xl shadow p-5">
+          <h2 class="text-lg font-semibold mb-3">📚 Материалы</h2>
+          {% if material_groups %}
+            {% for group in material_groups %}
+              {% if group['items'] %}
+                <div class="mb-4">
+                  <h3 class="font-medium text-indigo-700 mb-1">{{ group['category'].emoji }} {{ group['category'].name }}</h3>
+                  <ul class="text-sm space-y-1">
+                    {% for m in group['items'] %}
+                      <li>
+                        {% if m.url %}
+                          <a href="{{ m.url }}" target="_blank" class="text-indigo-600 hover:underline">{{ m.title }}</a>
+                        {% else %}
+                          <a href="/portal/api/materials/{{ m.id }}/download" class="text-indigo-600 hover:underline">{{ m.title }}</a>
+                        {% endif %}
+                        {% if m.description %}<span class="text-gray-500"> — {{ m.description }}</span>{% endif %}
+                      </li>
+                    {% endfor %}
+                  </ul>
+                </div>
+              {% endif %}
+            {% endfor %}
+          {% else %}
+            <p class="text-gray-500 text-sm">Материалов пока нет.</p>
+          {% endif %}
+        </section>
+
+        {# Ближайшие события #}
+        <section class="bg-white rounded-xl shadow p-5">
+          <h2 class="text-lg font-semibold mb-3">🔔 Ближайшие события</h2>
+          {% if events %}
+            <ul class="space-y-2">
+              {% for e in events %}
+                <li class="text-sm">
+                  <div class="font-medium">{{ e.title }}</div>
+                  <div class="text-gray-500 text-xs">
+                    📅 {{ e.event_date.strftime('%d.%m.%Y') }}{% if e.event_time %} в {{ e.event_time.strftime('%H:%M') }}{% endif %}
+                  </div>
+                  {% if e.description %}<div class="text-gray-600 text-xs mt-1">{{ e.description }}</div>{% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="text-gray-500 text-sm">Ближайших событий нет.</p>
+          {% endif %}
+        </section>
       </div>
 
-      <div class="bg-white rounded-xl shadow p-5">
-        <h2 class="text-lg font-semibold mb-3">📨 Последние уведомления</h2>
+    </div>
+
+    {# Правая колонка — чат уведомлений во всю высоту #}
+    <aside class="lg:col-span-1">
+      <div class="bg-white rounded-xl shadow p-5 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:flex lg:flex-col">
+        <h2 class="text-lg font-semibold mb-3">💬 Чат</h2>
         {% if recent_logs %}
-          <ul class="space-y-3 text-sm">
+          <div class="space-y-3 lg:flex-1 lg:overflow-y-auto">
             {% for log in recent_logs %}
-              <li class="border-b border-gray-100 pb-2 last:border-b-0 last:pb-0">
-                <div>
-                  <span class="text-xs text-gray-500">{{ log.sent_at.strftime('%d.%m %H:%M') }}</span>
-                  <span class="ml-2">
-                    {% if log.notification_type == 'event_reminder' %}🔔{% elif log.notification_type == 'schedule_change' %}🔄{% else %}📢{% endif %}
-                    {% if log.status == 'failed' %}<span class="text-red-600">[ошибка]</span>{% endif %}
-                    {% if log.notification_type == 'event_reminder' %}Напоминание
-                    {% elif log.notification_type == 'schedule_change' %}Изменение расписания
-                    {% else %}Новость{% endif %}
-                    {% if log.days_before is not none %}· за {{ log.days_before }} дн.{% endif %}
-                  </span>
+              <div>
+                <div class="chat-bubble {% if log.status == 'failed' %}chat-failed{% endif %}">
+                  {% if log.text_preview %}
+                    <div class="whitespace-pre-line break-words">{{ log.text_preview }}</div>
+                  {% else %}
+                    <div class="text-gray-400 italic">—</div>
+                  {% endif %}
                 </div>
-                {% if log.text_preview %}
-                  <div class="mt-1 text-gray-700 whitespace-pre-line break-words">{{ log.text_preview }}</div>
-                {% endif %}
-                {% if log.error_msg and log.status == 'failed' %}
-                  <div class="mt-1 text-xs text-red-600">{{ log.error_msg }}</div>
-                {% endif %}
-              </li>
+                <div class="chat-meta">
+                  {{ log.sent_at.strftime('%d.%m %H:%M') }}
+                  {% if log.status == 'failed' %} · ошибка{% endif %}
+                </div>
+              </div>
             {% endfor %}
-          </ul>
+          </div>
         {% else %}
           <p class="text-gray-500 text-sm">Уведомлений пока не было.</p>
         {% endif %}
       </div>
-    </section>
+    </aside>
 
   </div>
 
