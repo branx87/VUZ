@@ -56,9 +56,9 @@ async def broadcast_telegram(bot: Bot, text: str, *, concurrency: int = 25) -> t
     async def _one(user) -> tuple[bool, str | None]:
         async with sem:
             ok = await _send_with_retry(
-                lambda: bot.send_message(int(user.platform_user_id), text)
+                lambda: bot.send_message(int(user.telegram_user_id), text)
             )
-            return ok, user.platform_user_id
+            return ok, user.telegram_user_id
 
     results = await asyncio.gather(*[_one(u) for u in users], return_exceptions=False)
     sent = sum(1 for ok, _ in results if ok)
@@ -86,11 +86,11 @@ async def broadcast_vk(
     async def _one(user) -> tuple[bool, str | None]:
         async with sem:
             try:
-                await api.send_message(int(user.platform_user_id), text)
-                return True, user.platform_user_id
+                await api.send_message(int(user.vk_user_id), text)
+                return True, user.vk_user_id
             except Exception as exc:
-                logger.warning("VK broadcast failed for user %s: %s", user.platform_user_id, exc)
-                return False, user.platform_user_id
+                logger.warning("VK broadcast failed for user %s: %s", user.vk_user_id, exc)
+                return False, user.vk_user_id
 
     results = await asyncio.gather(*[_one(u) for u in users], return_exceptions=False)
     sent = sum(1 for ok, _ in results if ok)
