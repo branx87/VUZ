@@ -203,6 +203,7 @@ class Subject(Base):
     name: Mapped[str] = mapped_column(String(200))
     short_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class Teacher(Base):
@@ -212,6 +213,7 @@ class Teacher(Base):
     full_name: Mapped[str] = mapped_column(String(200))
     short_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
 
 # ---------------------------------------------------------------------------

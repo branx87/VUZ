@@ -171,7 +171,8 @@ def upgrade() -> None:
             id SERIAL PRIMARY KEY,
             name VARCHAR(200) NOT NULL,
             short_name VARCHAR(50),
-            is_active BOOLEAN NOT NULL DEFAULT TRUE
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            sort_order INTEGER NOT NULL DEFAULT 0
         )
         """
     )
@@ -184,6 +185,10 @@ def upgrade() -> None:
         "ALTER TABLE subjects "
         "ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE"
     )
+    op.execute(
+        "ALTER TABLE subjects "
+        "ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0"
+    )
 
     # -------------------------------------------------------------------------
     # teachers — аналогично
@@ -194,7 +199,8 @@ def upgrade() -> None:
             id SERIAL PRIMARY KEY,
             full_name VARCHAR(200) NOT NULL,
             short_name VARCHAR(200),
-            is_active BOOLEAN NOT NULL DEFAULT TRUE
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            sort_order INTEGER NOT NULL DEFAULT 0
         )
         """
     )
@@ -205,6 +211,10 @@ def upgrade() -> None:
     op.execute(
         "ALTER TABLE teachers "
         "ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE"
+    )
+    op.execute(
+        "ALTER TABLE teachers "
+        "ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0"
     )
 
     # -------------------------------------------------------------------------
