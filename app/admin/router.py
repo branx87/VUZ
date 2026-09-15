@@ -413,6 +413,43 @@ async def delete_user(request: Request, user_id: int):
     return RedirectResponse("/admin/users", status_code=302)
 
 
+@router.post("/users/{keep_id}/merge/{other_id}")
+async def merge_users(request: Request, keep_id: int, other_id: int):
+    """Объединяет other_id в keep_id: переносит platform-IDs и удаляет other."""
+    if not _authed(request):
+        return _redirect_login()
+    if keep_id == other_id:
+        return RedirectResponse("/admin/users?error=same_user", status_code=302)
+    async with AsyncSessionLocal() as session:
+        repo = UserRepository(session)
+        keep = await repo.get_by_id(keep_id)
+        other = await repo.get_by_id(other_id)
+        if keep and other:
+            await repo.merge_into(keep, other)
+            logger.info("[admin.users] merged id=%d into id=%d", other_id, keep_id)
+        else:
+            logger.warning("[admin.users] merge failed: keep=%s other=%s", keep, other)
+    return RedirectResponse("/admin/users", status_code=302)
+
+
+@router.post("/users/{user_id}/toggle-notifications")
+async def toggle_notifications(request: Request, user_id: int):
+    """Включает/выключает уведомления юзеру (TG/VK broadcast + scheduler)."""
+    if not _authed(request):
+        return _redirect_login()
+    async with AsyncSessionLocal() as session:
+        from sqlalchemy import update
+        from app.domain.models import User
+        result = await session.execute(
+            update(User)
+            .where(User.id == user_id)
+            .values(notifications_enabled=~User.notifications_enabled)
+        )
+        await session.commit()
+        logger.info("[admin.users] toggled notifications for id=%d", user_id)
+    return RedirectResponse("/admin/users", status_code=302)
+
+
 # ---------------------------------------------------------------------------
 # References — subjects & teachers
 # ---------------------------------------------------------------------------

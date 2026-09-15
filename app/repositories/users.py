@@ -162,3 +162,43 @@ class UserRepository:
     async def delete(self, user: User) -> None:
         await self.session.delete(user)
         await self.session.commit()
+
+    async def merge_into(self, keep: User, other: User) -> User:
+        """Переносит platform-IDs из `other` в `keep`, потом удаляет `other`.
+
+        Правила:
+        - telegram_user_id / telegram_username: переносим, если в keep пусто.
+        - vk_user_id / vk_username: переносим, если в keep пусто.
+        - email / password_hash: переносим, если в keep пусто.
+        - is_web_active: True, если хоть у одного True.
+        - notifications_enabled: False, если хоть у одного False.
+        - full_name: из keep, если есть; иначе из other.
+        """
+        if keep.id == other.id:
+            return keep
+        if not keep.telegram_user_id and other.telegram_user_id:
+            keep.telegram_user_id = other.telegram_user_id
+        if not keep.telegram_username and other.telegram_username:
+            keep.telegram_username = other.telegram_username
+        if not keep.vk_user_id and other.vk_user_id:
+            keep.vk_user_id = other.vk_user_id
+        if not keep.vk_username and other.vk_username:
+            keep.vk_username = other.vk_username
+        if not keep.email and other.email:
+            keep.email = other.email
+            keep.password_hash = other.password_hash
+        if not keep.is_web_active and other.is_web_active:
+            keep.is_web_active = True
+        if other.is_web_active is False:
+            keep.is_web_active = False
+        if not keep.full_name and other.full_name:
+            keep.full_name = other.full_name
+        if keep.notifications_enabled and not other.notifications_enabled:
+            keep.notifications_enabled = False
+        if other.notifications_enabled and not keep.notifications_enabled:
+            keep.notifications_enabled = True
+
+        await self.session.delete(other)
+        await self.session.commit()
+        await self.session.refresh(keep)
+        return keep

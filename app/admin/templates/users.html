@@ -22,6 +22,7 @@
         <th class="text-left py-2 px-3">Telegram</th>
         <th class="text-left py-2 px-3">VK</th>
         <th class="text-left py-2 px-3">Статус</th>
+        <th class="text-left py-2 px-3">Уведомления</th>
         <th class="text-left py-2 px-3">Создан</th>
         <th class="text-right py-2 px-3">Действия</th>
       </tr>
@@ -47,33 +48,93 @@
           {% endif %}
         </td>
         <td class="py-2 px-3">
-          {% if u.is_web_active %}
-            <span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded">✅ Активен</span>
+          {% if u.email %}
+            {% if u.is_web_active %}
+              <span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded">✅ Активен</span>
+            {% else %}
+              <span class="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded">⛔ Портал заблокирован</span>
+            {% endif %}
           {% else %}
-            <span class="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded">⛔ Заблокирован</span>
+            <span class="text-xs text-gray-400">—</span>
+          {% endif %}
+        </td>
+        <td class="py-2 px-3">
+          {% if u.notifications_enabled %}
+            <span class="text-xs text-green-700">🔔 on</span>
+          {% else %}
+            <span class="text-xs text-gray-500">🔕 off</span>
           {% endif %}
         </td>
         <td class="py-2 px-3 text-gray-500 text-xs">{{ u.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
-        <td class="py-2 px-3 text-right">
+        <td class="py-2 px-3 text-right space-y-1">
+          {# Объединить с другим юзером #}
+          <form method="post" action="/admin/users/{{ u.id }}/merge/{{ other.id }}"
+                class="inline"
+                onsubmit="return confirm('Перенести данные из #{{ other.id }} в #{{ u.id }} и удалить #{{ other.id }}?');">
+            <input type="hidden" name="other_id" value="">
+          </form>
+
+          {# Кнопка «🔀 Объединить» — открывает inline-форму #}
+          <details class="inline-block">
+            <summary class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-2 py-1 rounded cursor-pointer inline-block">
+              🔀 Объединить
+            </summary>
+            <div class="absolute z-10 mt-1 bg-white border rounded shadow-lg p-2 text-xs">
+              <form method="post" action="/admin/users/{{ u.id }}/merge/0" onsubmit="return false">
+                <select name="other_id" class="border rounded px-1 py-1 text-xs"
+                        onchange="this.form.action='/admin/users/{{ u.id }}/merge/'+this.value; this.form.onsubmit=()=>confirm('Объединить #'+this.value+' в #{{ u.id }}?');">
+                  <option value="">— выбери —</option>
+                  {% for other in users %}
+                    {% if other.id != u.id %}
+                      <option value="{{ other.id }}">
+                        #{{ other.id }} — {{ other.full_name or other.email or '—' }}
+                      </option>
+                    {% endif %}
+                  {% endfor %}
+                </select>
+                <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-2 py-1 rounded mt-1">
+                  Слить
+                </button>
+              </form>
+            </div>
+          </details>
+
+          {# Кнопка «🔕 Уведомления» — работает для всех, в т.ч. TG/VK #}
+          {% if u.notifications_enabled %}
+          <form method="post" action="/admin/users/{{ u.id }}/toggle-notifications" class="inline">
+            <button class="bg-yellow-600 hover:bg-yellow-700 text-white text-xs px-2 py-1 rounded">
+              🔕 Отключить уведомления
+            </button>
+          </form>
+          {% else %}
+          <form method="post" action="/admin/users/{{ u.id }}/toggle-notifications" class="inline">
+            <button class="bg-green-600 hover:bg-green-700 text-white text-xs px-2 py-1 rounded">
+              🔔 Включить уведомления
+            </button>
+          </form>
+          {% endif %}
+
+          {# Блокировка портала — только для тех, у кого есть email #}
           {% if u.email %}
             {% if u.is_web_active %}
             <form method="post" action="/admin/users/{{ u.id }}/block" class="inline">
-              <button class="bg-yellow-600 hover:bg-yellow-700 text-white text-xs px-2 py-1 rounded">
-                Заблокировать
+              <button class="bg-orange-600 hover:bg-orange-700 text-white text-xs px-2 py-1 rounded">
+                🔒 Блок портала
               </button>
             </form>
             {% else %}
             <form method="post" action="/admin/users/{{ u.id }}/unblock" class="inline">
               <button class="bg-green-600 hover:bg-green-700 text-white text-xs px-2 py-1 rounded">
-                Разблокировать
+                🔓 Разблокировать портал
               </button>
             </form>
             {% endif %}
           {% endif %}
+
           <form method="post" action="/admin/users/{{ u.id }}/delete" class="inline"
-                onsubmit="return confirm('Удалить пользователя {{ u.id }}?');">
+                onsubmit="return confirm('Удалить пользователя #{{ u.id }}?');">
             <button class="bg-red-600 hover:bg-red-700 text-white text-xs px-2 py-1 rounded">
-              Удалить
+              🗑 Удалить
             </button>
           </form>
         </td>
