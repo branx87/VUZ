@@ -17,6 +17,7 @@ from aiogram.types import (
 
 from app.database import AsyncSessionLocal
 from app.integrations.telegram.filters import IsAdmin
+from app.integrations.telegram.handlers.start import _MAIN_KB
 from app.repositories.events import EventRepository
 from app.services.broadcast import broadcast_all, broadcast_telegram
 
@@ -54,6 +55,15 @@ class AddEventFSM(StatesGroup):
 async def cmd_admin(message: Message, state: FSMContext) -> None:
     await state.clear()
     await message.answer("Панель администратора:", reply_markup=_ADMIN_KB)
+
+
+# Кнопка возврата в главное меню — ловим здесь, потому что admin router
+# зарегистрирован раньше start router и FSM-хендлеры ниже перехватили бы
+# текст "🏠 Главное меню" как содержимое рассылки/события.
+@router.message(F.text == "🏠 Главное меню")
+async def back_to_main_menu(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer("Главное меню:", reply_markup=_MAIN_KB)
 
 
 @router.message(Command("cancel"))
