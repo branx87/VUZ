@@ -2,7 +2,10 @@ from datetime import date, timedelta
 
 import logging
 
+from sqlalchemy import update
+
 from app.database import AsyncSessionLocal
+from app.domain.models import User
 from app.integrations.vk.api import vk_api
 from app.integrations.vk.keyboards import main_menu, schedule_menu
 from app.repositories.schedule import ScheduleRepository
@@ -11,6 +14,11 @@ from app.services.formatters import format_day_plain, format_week_plain
 from app.services.schedule import ScheduleService
 
 logger = logging.getLogger(__name__)
+
+# In-memory: какие VK-юзеры сейчас ждут ввода имени-фамилии.
+# Ключ — from_id (int). Очищается после первого успешного ввода.
+# NOTE: работает только в рамках одного процесса (webhook или polling).
+_awaiting_name: dict[int, bool] = {}
 
 
 async def _register_user(msg: dict) -> None:
@@ -30,10 +38,58 @@ async def _register_user(msg: dict) -> None:
 
 
 async def handle_start(msg: dict) -> None:
+    from_id = msg["from_id"]
     await _register_user(msg)
+    async with AsyncSessionLocal() as session:
+        existing = await UserRepository(session).get_by_vk_id(str(from_id))
+
+    # Если у юзера уже есть имя — сразу меню.
+    if existing and existing.full_name and existing.full_name.strip():
+        first = existing.full_name.split()[0]
+        await vk_api.send_message(
+            from_id,
+            f"Привет, {first}! Я бот группы 231/232 👋\n\nВыбери раздел:",
+            keyboard=main_menu(),
+        )
+        return
+
+    # Иначе — спрашиваем имя-фамилию.
+    _awaiting_name[from_id] = True
     await vk_api.send_message(
-        msg["from_id"],
-        "Привет! Я бот группы 231/232 👋\n\nВыбери раздел:",
+        from_id,
+        "Привет! Я бот группы 231/232 👋\n\n"
+        "Напиши, пожалуйста, имя и фамилию — например:\n"
+        "Иванов Иван",
+    )
+
+
+async def handle_awaiting_name(msg: dict) -> None:
+    """Обрабатывает ввод имени от юзера, который сейчас ждёт его."""
+    from_id = msg["from_id"]
+    text = (msg.get("text") or "").strip()
+    parts = text.split()
+    if len(parts) < 2:
+        await vk_api.send_message(
+            from_id,
+            "❌ Нужны минимум имя и фамилия (два слова).\n"
+            "Пример: Иванов Иван",
+        )
+        return
+
+    full_name = " ".join(parts).strip()
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            update(User)
+            .where(User.vk_user_id == str(from_id))
+            .values(full_name=full_name)
+        )
+        await session.commit()
+
+    _awaiting_name.pop(from_id, None)
+    first = full_name.split()[0]
+    await vk_api.send_message(
+        from_id,
+        f"✅ Записал: {full_name}\n\nПривет, {first}! Выбери раздел:",
         keyboard=main_menu(),
     )
 

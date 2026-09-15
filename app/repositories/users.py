@@ -14,6 +14,18 @@ class UserRepository:
 
     # ----- Telegram -----
 
+    async def get_by_telegram_id(self, telegram_user_id: str) -> User | None:
+        result = await self.session.execute(
+            select(User).where(User.telegram_user_id == telegram_user_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_by_vk_id(self, vk_user_id: str) -> User | None:
+        result = await self.session.execute(
+            select(User).where(User.vk_user_id == vk_user_id)
+        )
+        return result.scalar_one_or_none()
+
     async def upsert_telegram(
         self,
         telegram_user_id: str,

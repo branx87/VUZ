@@ -29,10 +29,14 @@ async def dispatch_message(message: dict) -> None:
     """Единая точка маршрутизации сообщения. Используется FastAPI-роутом
     (Callback API) и run_vk_polling.py (Long Poll).
 
-    Первым делом регистрирует отправителя — иначе юзеры, которые нажали
-    кнопку без /start, остаются "невидимыми" для рассылок.
+    Порядок:
+    1. Регистрируем отправителя (иначе юзеры без /start "невидимые").
+    2. Если юзер в режиме ожидания имени — обрабатываем ввод имени.
+    3. Иначе — обычная диспетчеризация по тексту.
     """
     from_id = message.get("from_id")
+    text = (message.get("text") or "").strip()
+
     if from_id:
         try:
             from app.database import AsyncSessionLocal
@@ -46,13 +50,21 @@ async def dispatch_message(message: dict) -> None:
         except Exception as exc:
             logger.warning("VK upsert on incoming failed: %s", exc)
 
-    text = (message.get("text") or "").strip().lower()
-    handler = _dispatch.get(text)
+    # Если юзер сейчас в режиме ожидания имени — перехватываем любое сообщение.
+    if from_id:
+        from app.integrations.vk.handlers.schedule import _awaiting_name, handle_awaiting_name
+        if _awaiting_name.get(from_id):
+            if text:
+                await handle_awaiting_name(message)
+            return  # Не диспетчеризируем дальше, пока юзер не ввёл имя.
+
+    text_lower = text.lower()
+    handler = _dispatch.get(text_lower)
     if handler:
         try:
             await handler(message)
         except Exception:
-            logger.exception("VK handler error for text=%r", text)
+            logger.exception("VK handler error for text=%r", text_lower)
 
 
 @router.post("/")
