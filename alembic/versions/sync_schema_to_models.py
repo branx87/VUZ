@@ -1,11 +1,16 @@
-"""sync schema to models (idempotent)
+"""sync schema to models (idempotent, root migration)
 
 Revision ID: sync_schema_to_models
-Revises: schedule_entries_timestamps
+Revises:
 Create Date: 2026-09-15 15:00:00.000000
 
-Синхронизирует БД с актуальной моделью app/domain/models.py.
-Все операции идемпотентны (IF NOT EXISTS), можно запускать много раз.
+Единственная миграция в проекте. Приводит БД в соответствие с
+актуальной моделью app/domain/models.py. Все операции идемпотентны
+(IF NOT EXISTS), можно запускать много раз.
+
+Для свежего деплоя: применить один раз — `alembic upgrade head`.
+Для существующей БД: можно либо прогнать эту миграцию (дотянет до модели),
+либо `alembic stamp head` (просто отметить, что БД уже в нужном состоянии).
 """
 from typing import Sequence, Union
 
@@ -13,7 +18,7 @@ from alembic import op
 
 
 revision: str = "sync_schema_to_models"
-down_revision: Union[str, None] = "schedule_entries_timestamps"
+down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
