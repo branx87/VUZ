@@ -1,59 +1,21 @@
-"""
-SQLAlchemy 2.0 ORM models. Pure data structures — no business logic here.
-"""
-import logging
-from datetime import date, datetime, time
+"""SQLAlchemy ORM-модели для приложения."""
+from datetime import datetime
 from typing import Optional
-
-logger = logging.getLogger(__name__)
 
 from sqlalchemy import (
     JSON,
     Boolean,
-    Date,
     DateTime,
     ForeignKey,
     Integer,
     String,
-    Text,
-    Time,
     UniqueConstraint,
+    func,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.database import Base
 
-class Base(DeclarativeBase):
-    pass
-
-
-# ---------------------------------------------------------------------------
-# References (справочники предметов и преподавателей)
-# ---------------------------------------------------------------------------
-
-class Subject(Base):
-    __tablename__ = "subjects"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(200), unique=True)
-    short_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    sort_order: Mapped[int] = mapped_column(Integer, default=0)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-
-
-class Teacher(Base):
-    __tablename__ = "teachers"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    full_name: Mapped[str] = mapped_column(String(200), unique=True)
-    short_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    sort_order: Mapped[int] = mapped_column(Integer, default=0)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-
-
-# ---------------------------------------------------------------------------
-# Users
-# ---------------------------------------------------------------------------
 
 class User(Base):
     """Один пользователь = одна строка. Платформенные ID — отдельные колонки."""
@@ -99,113 +61,37 @@ class User(Base):
     notification_logs: Mapped[list["NotificationLog"]] = relationship(back_populates="user")
 
 
-# ---------------------------------------------------------------------------
-# Schedule
-# ---------------------------------------------------------------------------
+class NotificationLog(Base):
+    """Лог отправленных уведомлений — для дедупликации и отладки."""
 
-class ScheduleEntry(Base):
-    """Базовое еженедельное расписание."""
-    __tablename__ = "schedule_entries"
+    __tablename__ = "notification_logs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-
-    # 0=Пн, 1=Вт, ..., 5=Сб, 6=Вс
-    day_of_week: Mapped[int] = mapped_column(Integer)
-    # Номер пары (1-8)
-    pair_number: Mapped[int] = mapped_column(Integer)
-    time_start: Mapped[time] = mapped_column(Time)
-    time_end: Mapped[time] = mapped_column(Time)
-
-    subject: Mapped[str] = mapped_column(String(200))
-    teacher: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    room: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-
-    # None = все подгруппы, 1 или 2 = конкретная подгруппа
-    subgroup: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    # Понедельник учебной недели (сессии), к которой относится запись
-    session_week: Mapped[date] = mapped_column(Date)
-
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-
-    exceptions: Mapped[list["ScheduleException"]] = relationship(back_populates="original_entry")
-
-
-class ScheduleException(Base):
-    """Разовые изменения к конкретной дате: отмена, замена, добавление пары."""
-    __tablename__ = "schedule_exceptions"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    date: Mapped[date] = mapped_column(Date, index=True)
-
-    # "cancel" — пара отменена
-    # "replace" — замена (другой предмет / преподаватель / аудитория)
-    # "add"     — добавлена пара, которой нет в базовом расписании
-    exception_type: Mapped[str] = mapped_column(String(20))
-
-    # Для cancel/replace: ссылка на отменяемую/заменяемую запись
-    original_entry_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("schedule_entries.id", ondelete="SET NULL"), nullable=True
-    )
-    original_entry: Mapped[Optional["ScheduleEntry"]] = relationship(back_populates="exceptions")
-
-    # Данные новой/заменяющей пары (заполняются для replace и add)
-    pair_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    time_start: Mapped[Optional[time]] = mapped_column(Time, nullable=True)
-    time_end: Mapped[Optional[time]] = mapped_column(Time, nullable=True)
-    subject: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    teacher: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    room: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-
-    created_at: Mapped[datetime] = mapped_column(
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    event_id: Mapped[Optional[int]] = mapped_column(ForeignKey("events.id"), nullable=True)
+    notification_type: Mapped[str] = mapped_column(String(50))
+    days_before: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(20))  # "sent" / "failed"
+    error_msg: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    sent_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
 
+    user: Mapped["User"] = relationship(back_populates="notification_logs")
 
-# ---------------------------------------------------------------------------
-# Materials (files & links)
-# ---------------------------------------------------------------------------
 
-class MaterialCategory(Base):
-    __tablename__ = "material_categories"
+class Event(Base):
+    __tablename__ = "events"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(100))
-    emoji: Mapped[str] = mapped_column(String(10), default="📁")
-    sort_order: Mapped[int] = mapped_column(Integer, default=0)
-
-    materials: Mapped[list["Material"]] = relationship(
-        back_populates="category", order_by="Material.sort_order"
-    )
-
-
-class Material(Base):
-    __tablename__ = "materials"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    category_id: Mapped[int] = mapped_column(ForeignKey("material_categories.id"))
-    category: Mapped["MaterialCategory"] = relationship(back_populates="materials")
-
-    title: Mapped[str] = mapped_column(String(300))
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-
-    # "file" | "link"
-    material_type: Mapped[str] = mapped_column(String(10))
-
-    # Для ссылок
-    url: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
-
-    # Для файлов — путь на диске относительно FILES_DIR
-    file_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    file_name: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
-    file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # bytes
-
-    # Кэш platform-специфичных ID, чтобы не перезагружать файл при каждой отправке
-    telegram_file_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    vk_doc_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-
-    is_visible: Mapped[bool] = mapped_column(Boolean, default=True)
-    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    title: Mapped[str] = mapped_column(String(200))
+    event_date: Mapped[datetime] = mapped_column(DateTime)
+    event_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    notify_days_before: Mapped[list] = mapped_column(
+        JSON, default=lambda: [3, 1]
+    )  # [3, 1] = за 3 и 1 день
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -215,58 +101,117 @@ class Material(Base):
     )
 
 
-# ---------------------------------------------------------------------------
-# Events & Notifications
-# ---------------------------------------------------------------------------
-
-class Event(Base):
-    """Событие, о котором нужно уведомить студентов."""
-    __tablename__ = "events"
+class MaterialCategory(Base):
+    __tablename__ = "material_categories"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    title: Mapped[str] = mapped_column(String(300))
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    event_date: Mapped[date] = mapped_column(Date, index=True)
-    event_time: Mapped[Optional[time]] = mapped_column(Time, nullable=True)
+    name: Mapped[str] = mapped_column(String(200))
+    emoji: Mapped[str] = mapped_column(String(10), default="📁")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
-    # Список целых чисел: за сколько дней до события слать напоминание
-    # Например [3, 1] — за 3 дня и за 1 день
-    notify_days_before: Mapped[list] = mapped_column(JSON, default=lambda: [3, 1])
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    materials: Mapped[list["Material"]] = relationship(
+        back_populates="category", cascade="all, delete-orphan"
+    )
+
+
+class Material(Base):
+    __tablename__ = "materials"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    category_id: Mapped[int] = mapped_column(
+        ForeignKey("material_categories.id", ondelete="CASCADE")
+    )
+
+    title: Mapped[str] = mapped_column(String(300))
+    # "link" или "file"
+    material_type: Mapped[str] = mapped_column(String(20), default="link")
+    url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # Для material_type="file":
+    file_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    file_name: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    telegram_file_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    vk_doc_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+    description: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_visible: Mapped[bool] = mapped_column(Boolean, default=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
 
-    notification_logs: Mapped[list["NotificationLog"]] = relationship(back_populates="event")
+    category: Mapped["MaterialCategory"] = relationship(back_populates="materials")
 
 
-class NotificationLog(Base):
-    """Аудит отправленных уведомлений — чтобы не слать дважды."""
-    __tablename__ = "notification_logs"
+class ScheduleEntry(Base):
+    __tablename__ = "schedule_entries"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    session_week: Mapped[datetime] = mapped_column(DateTime)
+    day_of_week: Mapped[int] = mapped_column(Integer)  # 0..6
+    pair_number: Mapped[int] = mapped_column(Integer)  # 1..N
+    time_start: Mapped[datetime] = mapped_column(DateTime)
+    time_end: Mapped[datetime] = mapped_column(DateTime)
 
-    event_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("events.id", ondelete="SET NULL"), nullable=True
-    )
-    event: Mapped[Optional["Event"]] = relationship(back_populates="notification_logs")
+    subject: Mapped[str] = mapped_column(String(200))
+    teacher: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    room: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    subgroup: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
-    user: Mapped["User"] = relationship(back_populates="notification_logs")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    # "event_reminder" | "schedule_change" | "news"
-    notification_type: Mapped[str] = mapped_column(String(50))
-
-    # Для event_reminder: за сколько дней было отправлено
-    days_before: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-
-    sent_at: Mapped[datetime] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
-    # "sent" | "failed"
-    status: Mapped[str] = mapped_column(String(20), default="sent")
-    error_msg: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ScheduleException(Base):
+    """Замена / отмена пары в конкретную дату."""
+
+    __tablename__ = "schedule_exceptions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    date: Mapped[datetime] = mapped_column(DateTime)
+    exception_type: Mapped[str] = mapped_column(String(20))  # "replace" | "cancel"
+    original_entry_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("schedule_entries.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # Поля для замены:
+    pair_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    time_start: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    time_end: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    subject: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    teacher: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    room: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    subgroup: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class Subject(Base):
+    __tablename__ = "subjects"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    short_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class Teacher(Base):
+    __tablename__ = "teachers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    full_name: Mapped[str] = mapped_column(String(200))
+    short_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 # ---------------------------------------------------------------------------
@@ -292,6 +237,25 @@ class CrosspostMessage(Base):
     deduplication_key: Mapped[str] = mapped_column(String(64), index=True)
     content_preview: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+# ---------------------------------------------------------------------------
+# Password reset codes
+# ---------------------------------------------------------------------------
+
+class PasswordResetCode(Base):
+    """Одноразовый код восстановления пароля, отправляется через бота."""
+    __tablename__ = "password_reset_codes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(200), index=True)
+    # bcrypt-хеш кода; сам код в БД не хранится.
+    code_hash: Mapped[str] = mapped_column(String(200))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

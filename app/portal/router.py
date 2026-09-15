@@ -189,6 +189,51 @@ async def do_login(
     return RedirectResponse("/portal/dashboard", status_code=302)
 
 
+# ---------------------------------------------------------------------------
+# Восстановление пароля
+# ---------------------------------------------------------------------------
+
+@router.get("/forgot", response_class=HTMLResponse)
+async def forgot_page(request: Request, sent: str = "", error: str = ""):
+    return templates.TemplateResponse(request, "forgot.html", {
+        "sent": sent,
+        "error": error,
+    })
+
+
+@router.post("/forgot")
+async def do_forgot(request: Request, email: str = Form(...)):
+    from app.services.password_reset import request_reset
+    result = await request_reset(email)
+    # Всегда показываем одинаковое сообщение — не светим, есть ли такой email.
+    if result["sent"]:
+        return RedirectResponse("/portal/forgot?sent=1", status_code=302)
+    else:
+        return RedirectResponse("/portal/forgot?sent=1", status_code=302)
+
+
+@router.get("/reset", response_class=HTMLResponse)
+async def reset_page(request: Request, error: str = ""):
+    return templates.TemplateResponse(request, "reset.html", {"error": error})
+
+
+@router.post("/reset")
+async def do_reset(
+    request: Request,
+    email: str = Form(...),
+    code: str = Form(...),
+    password: str = Form(...),
+    password2: str = Form(...),
+):
+    from app.services.password_reset import confirm_reset
+    if password != password2:
+        return RedirectResponse("/portal/reset?error=Пароли+не+совпадают", status_code=302)
+    ok, err = await confirm_reset(email, code, password)
+    if ok:
+        return RedirectResponse("/portal/login?reset=1", status_code=302)
+    return RedirectResponse(f"/portal/reset?error={err}", status_code=302)
+
+
 @router.post("/logout")
 async def do_logout(request: Request):
     request.session.clear()

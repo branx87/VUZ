@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Восстановление пароля — VUZ Bot</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center px-4">
+  <div class="bg-white rounded-xl shadow p-8 w-full max-w-sm">
+    <h1 class="text-2xl font-bold mb-2 text-center">🔐 Забыл пароль</h1>
+
+    {% if request.query_params.get('sent') %}
+    <div class="bg-green-50 border border-green-200 text-green-800 rounded p-3 mb-4 text-sm">
+      ✅ Если такой email есть в системе, мы отправили 6-значный код в бот (Telegram / VK).
+      Открой бота — там сообщение с кодом. Затем переходи на страницу восстановления.
+    </div>
+    <p class="text-center text-sm text-gray-500 mt-4">
+      Код пришёл?
+      <a href="/portal/reset" class="text-indigo-600 hover:underline">Ввести код →</a>
+    </p>
+    {% else %}
+    <p class="text-sm text-gray-500 mb-4">
+      Введи email, который указывал при регистрации. Мы пришлём код восстановления в бот.
+    </p>
+    <form method="post" action="/portal/forgot" class="space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-700 mb-1">Email</label>
+        <input type="email" name="email" required autofocus
+               class="w-full border rounded px-3 py-2 text-sm">
+      </div>
+      <button type="submit"
+              class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 rounded transition">
+        Отправить код
+      </button>
+    </form>
+    {% endif %}
+
+    <p class="text-center text-sm text-gray-500 mt-4">
+      <a href="/portal/login" class="text-indigo-600 hover:underline">← Назад ко входу</a>
+    </p>
+  </div>
+</body>
+</html>

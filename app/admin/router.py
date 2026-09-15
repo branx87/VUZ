@@ -431,6 +431,27 @@ async def toggle_notifications(request: Request, user_id: int):
     return RedirectResponse("/admin/users", status_code=302)
 
 
+@router.post("/users/{user_id}/reset-password")
+async def admin_reset_password(request: Request, user_id: int):
+    """Админский сброс пароля. Шлёт код восстановления юзеру через бота.
+    Если у юзера нет TG/VK — код никуда не уйдёт, нужно сообщить лично."""
+    if not _authed(request):
+        return _redirect_login()
+    async with AsyncSessionLocal() as session:
+        user = await UserRepository(session).get_by_id(user_id)
+    if not user or not user.email:
+        return RedirectResponse("/admin/users?error=no_email", status_code=302)
+    from app.services.password_reset import request_reset
+    result = await request_reset(user.email)
+    logger.info(
+        "[admin.users] reset password for id=%d email=%s sent=%s",
+        user_id, user.email, result["sent"],
+    )
+    if result["sent"]:
+        return RedirectResponse("/admin/users?reset=ok", status_code=302)
+    return RedirectResponse("/admin/users?reset=no_bot", status_code=302)
+
+
 # ---------------------------------------------------------------------------
 # References — subjects & teachers
 # ---------------------------------------------------------------------------

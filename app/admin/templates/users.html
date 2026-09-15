@@ -48,6 +48,12 @@
         <td class="py-2 px-3 text-gray-500 text-xs">{{ u.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
         <td class="py-2 px-3 text-right space-x-1">
           {% if u.email %}
+            <form method="post" action="/admin/users/{{ u.id }}/reset-password" class="inline"
+                  onsubmit="return confirm('Отправить юзеру код восстановления пароля в бот?');">
+              <button class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1 rounded">
+                🔑 Сброс пароля
+              </button>
+            </form>
             {% if u.is_web_active %}
             <form method="post" action="/admin/users/{{ u.id }}/block" class="inline">
               <button class="bg-yellow-600 hover:bg-yellow-700 text-white text-xs px-2 py-1 rounded">
